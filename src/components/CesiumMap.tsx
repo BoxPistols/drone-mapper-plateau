@@ -68,6 +68,7 @@ export function CesiumMap() {
 
     return () => {
       handlerRef.current?.destroy()
+      handlerRef.current = null
       viewer.destroy()
       viewerRef.current = null
     }
