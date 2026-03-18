@@ -1,0 +1,433 @@
+@import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;700&family=Space+Grotesk:wght@400;500;600;700&display=swap');
+
+/* ── カラーシステム ── */
+:root {
+  --bg-base:      #060810;
+  --bg-panel:     rgba(10, 14, 27, 0.92);
+  --bg-surface:   #0d1117;
+  --bg-elevated:  #161b22;
+  --bg-hover:     #1c2230;
+  --border:       rgba(88, 166, 255, 0.12);
+  --border-hover: rgba(88, 166, 255, 0.35);
+  --accent:       #58a6ff;
+  --accent-dim:   rgba(88, 166, 255, 0.15);
+  --accent-glow:  rgba(88, 166, 255, 0.25);
+  --success:      #3fb950;
+  --warning:      #d29922;
+  --error:        #f85149;
+  --text-primary: #e8eaf0;
+  --text-muted:   #8b949e;
+  --text-faint:   #484f58;
+}
+
+/* ── リセット ── */
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  background: var(--bg-base);
+  color: var(--text-primary);
+  font-family: 'DM Sans', 'Hiragino Sans', 'Noto Sans JP', sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ── アプリ全体レイアウト ── */
+.app {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  overflow: hidden;
+}
+
+/* ── ヘッダー ── */
+.app-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 20px;
+  height: 56px;
+  background: var(--bg-surface);
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+  gap: 16px;
+}
+
+.header-left {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.header-badge {
+  font-family: 'Space Grotesk', sans-serif;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 1.5px;
+  color: var(--accent);
+  background: var(--accent-dim);
+  border: 1px solid var(--border-hover);
+  border-radius: 5px;
+  padding: 3px 8px;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.app-header h1 {
+  font-family: 'Space Grotesk', sans-serif;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text-primary);
+  letter-spacing: 0.3px;
+  line-height: 1;
+}
+
+.app-header p {
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-top: 3px;
+  line-height: 1;
+}
+
+.header-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.city-display {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.city-display-name {
+  font-family: 'Space Grotesk', sans-serif;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+/* ── LODバッジ ── */
+.lod-badge,
+.city-lod {
+  font-family: 'Space Grotesk', sans-serif;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.8px;
+  padding: 2px 6px;
+  border-radius: 4px;
+  line-height: 1.4;
+}
+
+.lod-1 { background: rgba(63, 185, 80, 0.15);  color: var(--success);  border: 1px solid rgba(63, 185, 80, 0.3); }
+.lod-2 { background: var(--accent-dim);         color: var(--accent);   border: 1px solid var(--border-hover); }
+.lod-3 { background: rgba(210, 153, 34, 0.15);  color: var(--warning);  border: 1px solid rgba(210, 153, 34, 0.3); }
+
+/* ── 都市セレクター ── */
+.city-selector {
+  display: flex;
+  gap: 16px;
+  padding: 8px 16px;
+  background: var(--bg-surface);
+  border-bottom: 1px solid var(--border);
+  overflow-x: auto;
+  flex-shrink: 0;
+  scrollbar-width: thin;
+  scrollbar-color: var(--bg-elevated) transparent;
+}
+
+.city-selector::-webkit-scrollbar {
+  height: 3px;
+}
+.city-selector::-webkit-scrollbar-track { background: transparent; }
+.city-selector::-webkit-scrollbar-thumb { background: var(--bg-elevated); border-radius: 2px; }
+
+.city-group {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.city-group-label {
+  font-size: 10px;
+  color: var(--text-faint);
+  white-space: nowrap;
+  padding-right: 4px;
+  border-right: 1px solid var(--border);
+}
+
+.city-group-buttons {
+  display: flex;
+  gap: 4px;
+}
+
+.city-btn {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 11px;
+  background: var(--bg-elevated);
+  border: 1px solid transparent;
+  border-radius: 7px;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: all 0.15s ease;
+  white-space: nowrap;
+  font-family: 'DM Sans', sans-serif;
+}
+
+.city-btn:hover {
+  background: var(--bg-hover);
+  border-color: var(--border-hover);
+  color: var(--text-primary);
+}
+
+.city-btn.active {
+  background: var(--accent-dim);
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.city-name {
+  font-size: 13px;
+  font-weight: 500;
+}
+
+/* ── ビューワーコンテナ ── */
+.viewer-container {
+  flex: 1;
+  position: relative;
+  overflow: hidden;
+}
+
+.cesium-wrapper {
+  width: 100%;
+  height: 100%;
+  position: relative;
+}
+
+.cesium-container {
+  width: 100%;
+  height: 100%;
+}
+
+/* ── オーバーレイ（ローディング・エラー） ── */
+.overlay {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  background: var(--bg-panel);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 28px 36px;
+  text-align: center;
+  z-index: 100;
+  pointer-events: none;
+  min-width: 220px;
+}
+
+.overlay.loading {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+}
+
+.overlay.loading p {
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+.overlay.error {
+  border-color: rgba(248, 81, 73, 0.4);
+  pointer-events: auto;
+}
+
+.overlay.error p {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--error);
+}
+
+.overlay.error small {
+  font-size: 10px;
+  color: var(--text-faint);
+  display: block;
+  margin-top: 6px;
+  max-width: 380px;
+  word-break: break-all;
+  line-height: 1.4;
+}
+
+.error-hint {
+  font-size: 12px !important;
+  color: var(--text-muted) !important;
+  margin-top: 10px;
+}
+
+/* ── スピナー ── */
+.spinner {
+  width: 32px;
+  height: 32px;
+  border: 2px solid var(--border);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: spin 0.7s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+/* ── クリックヒント ── */
+.click-hint {
+  position: absolute;
+  bottom: 48px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--bg-panel);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  padding: 6px 14px;
+  font-size: 11px;
+  color: var(--text-muted);
+  pointer-events: none;
+  z-index: 50;
+  animation: fadeInUp 0.5s ease forwards;
+  white-space: nowrap;
+}
+
+@keyframes fadeInUp {
+  from { opacity: 0; transform: translateX(-50%) translateY(8px); }
+  to   { opacity: 1; transform: translateX(-50%) translateY(0); }
+}
+
+/* ── 建物情報パネル ── */
+.building-info {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  width: 280px;
+  background: var(--bg-panel);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid var(--border-hover);
+  border-radius: 12px;
+  z-index: 200;
+  overflow: hidden;
+  animation: slideIn 0.2s ease forwards;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5), 0 0 0 1px var(--accent-glow);
+}
+
+@keyframes slideIn {
+  from { opacity: 0; transform: translateX(12px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+
+.building-info-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 14px;
+  background: var(--accent-dim);
+  border-bottom: 1px solid var(--border);
+}
+
+.building-info-icon {
+  font-size: 14px;
+  line-height: 1;
+}
+
+.building-info-title {
+  font-family: 'Space Grotesk', sans-serif;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--accent);
+  flex: 1;
+}
+
+.building-info-close {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 16px;
+  line-height: 1;
+  padding: 0 2px;
+  transition: color 0.15s;
+}
+
+.building-info-close:hover {
+  color: var(--text-primary);
+}
+
+.building-info-body {
+  padding: 12px 0;
+  max-height: 360px;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: var(--bg-elevated) transparent;
+}
+
+.building-info-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+
+.building-info-table tr {
+  border-bottom: 1px solid rgba(48, 54, 61, 0.5);
+}
+
+.building-info-table tr:last-child {
+  border-bottom: none;
+}
+
+.building-info-table th {
+  width: 90px;
+  padding: 7px 14px;
+  text-align: left;
+  font-weight: 500;
+  color: var(--text-muted);
+  white-space: nowrap;
+  vertical-align: top;
+}
+
+.building-info-table td {
+  padding: 7px 14px 7px 0;
+  color: var(--text-primary);
+  word-break: break-all;
+  line-height: 1.4;
+}
+
+.building-info-extra th,
+.building-info-extra td {
+  opacity: 0.6;
+  font-size: 11px;
+}
+
+.building-info-empty {
+  padding: 16px 14px;
+  font-size: 12px;
+  color: var(--text-muted);
+  text-align: center;
+}
+
+/* ── Cesiumウィジェット調整 ── */
+.cesium-widget-credits {
+  display: none !important;
+}
+
+.cesium-viewer .cesium-viewer-toolbar {
+  top: 8px !important;
+  right: 8px !important;
+}
