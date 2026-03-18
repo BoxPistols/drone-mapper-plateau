@@ -13,7 +13,8 @@
     "cesium": "^1.139.1",
     "react": "^19.2.4",
     "react-dom": "^19.2.4",
-    "resium": "^1.20.0"
+    "resium": "^1.20.0",
+    "zustand": "^5.0.12"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.4",

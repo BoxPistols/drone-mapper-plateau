@@ -1,0 +1,276 @@
+import { create } from 'zustand'
+import { persist } from 'zustand/middleware'
+import type {
+  CityConfig,
+  DronePin,
+  FlightZone,
+  FlightPlan,
+  FlightRecord,
+  MediaItem,
+  MapMode,
+  SidebarTab,
+  BuildingProperties,
+  SimState,
+  Waypoint,
+} from '../types'
+
+// デフォルト都市リスト
+export const PLATEAU_CITIES: CityConfig[] = [
+  { id: 'taito', name: '台東区', prefecture: '東京都',
+    tilesUrl: 'https://assets.cms.plateau.reearth.io/assets/59/0fbb20-59cb-4ce5-9d12-2273ce72e6d2/13106_taito-ku_city_2024_citygml_1_op_bldg_3dtiles_13106_taito-ku_lod2_no_texture/tileset.json',
+    longitude: 139.7965, latitude: 35.7150, height: 1000, lod: 2 },
+  { id: 'minato', name: '港区', prefecture: '東京都',
+    tilesUrl: 'https://assets.cms.plateau.reearth.io/assets/ee/252e4a-c745-45fd-95f0-f0a396d4e395/13103_minato-ku_pref_2023_citygml_2_op_bldg_3dtiles_13103_minato-ku_lod2_no_texture/tileset.json',
+    longitude: 139.7454, latitude: 35.6585, height: 1200, lod: 2 },
+  { id: 'sendai', name: '仙台市', prefecture: '宮城県',
+    tilesUrl: 'https://assets.cms.plateau.reearth.io/assets/bd/e78220-9044-4dcd-9519-5ff5730e25f2/04100_sendai-shi_city_2024_citygml_1_op_bldg_3dtiles_04101_aoba-ku_lod2_no_texture/tileset.json',
+    longitude: 140.8697, latitude: 38.2526, height: 1500, lod: 2 },
+  { id: 'kaga', name: '加賀市', prefecture: '石川県',
+    tilesUrl: 'https://assets.cms.plateau.reearth.io/assets/aa/36a235-f066-4d31-861a-11cf2e25ba66/17206_kaga-shi_city_2024_citygml_1_op_bldg_3dtiles_lod2_no_texture/tileset.json',
+    longitude: 136.3058, latitude: 36.2984, height: 1500, lod: 2 },
+  { id: 'numazu', name: '沼津市', prefecture: '静岡県',
+    tilesUrl: 'https://assets.cms.plateau.reearth.io/assets/0e/14ced9-b904-42fa-af64-ca1be1269ac1/22203_numazu-shi_city_2023_citygml_3_op_bldg_3dtiles_lod3/tileset.json',
+    longitude: 138.8643, latitude: 35.0964, height: 800, lod: 3, hasTexture: true },
+  { id: 'hiroshima', name: '広島市', prefecture: '広島県',
+    tilesUrl: 'https://assets.cms.plateau.reearth.io/assets/96/b46095-22bc-4190-b658-3ef163e36c9f/34100_hiroshima-shi_city_2024_citygml_1_op_bldg_3dtiles_34101_naka-ku_lod2_no_texture/tileset.json',
+    longitude: 132.4553, latitude: 34.3954, height: 1200, lod: 2 },
+  { id: 'fukuoka', name: '福岡市', prefecture: '福岡県',
+    tilesUrl: 'https://assets.cms.plateau.reearth.io/assets/bf/d8ff81-ad03-486b-a021-6865e50c3b23/40130_fukuoka-shi_city_2024_citygml_2_op_bldg_3dtiles_40133_chuo-ku_lod2/tileset.json',
+    longitude: 130.4017, latitude: 33.5901, height: 1200, lod: 2, hasTexture: true },
+]
+
+function uid() {
+  return `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+}
+
+interface DroneStore {
+  // 都市
+  selectedCity: CityConfig
+  setSelectedCity: (city: CityConfig) => void
+
+  // マップ
+  mapMode: MapMode
+  setMapMode: (mode: MapMode) => void
+  buildingProps: BuildingProperties | null
+  setBuildingProps: (props: BuildingProperties | null) => void
+
+  // ピン
+  pins: DronePin[]
+  addPin: (lon: number, lat: number, alt: number) => DronePin
+  updatePin: (id: string, patch: Partial<DronePin>) => void
+  deletePin: (id: string) => void
+
+  // ゾーン (描画中)
+  drawingZonePoints: [number, number][]
+  addDrawingPoint: (lon: number, lat: number) => void
+  resetDrawingPoints: () => void
+  commitZone: (name: string, type: FlightZone['type']) => void
+  zones: FlightZone[]
+  updateZone: (id: string, patch: Partial<FlightZone>) => void
+  deleteZone: (id: string) => void
+
+  // 飛行計画
+  plans: FlightPlan[]
+  activePlanId: string | null
+  setActivePlanId: (id: string | null) => void
+  addPlan: () => FlightPlan
+  updatePlan: (id: string, patch: Partial<FlightPlan>) => void
+  deletePlan: (id: string) => void
+  addWaypoint: (planId: string, lon: number, lat: number) => void
+  updateWaypoint: (planId: string, wpId: string, patch: Partial<Waypoint>) => void
+  deleteWaypoint: (planId: string, wpId: string) => void
+
+  // 飛行記録
+  records: FlightRecord[]
+  addRecord: (planId?: string) => FlightRecord
+  updateRecord: (id: string, patch: Partial<FlightRecord>) => void
+  deleteRecord: (id: string) => void
+
+  // 撮影データ
+  media: MediaItem[]
+  addMedia: (item: Omit<MediaItem, 'id'>) => void
+  deleteMedia: (id: string) => void
+
+  // シミュレーション
+  simulation: SimState | null
+  startSimulation: (planId: string) => void
+  stopSimulation: () => void
+  setSimulation: (patch: Partial<SimState>) => void
+
+  // UI
+  sidebarTab: SidebarTab
+  setSidebarTab: (tab: SidebarTab) => void
+  sidebarOpen: boolean
+  setSidebarOpen: (open: boolean) => void
+}
+
+export const useDroneStore = create<DroneStore>()(
+  persist(
+    (set, get) => ({
+      // 都市
+      selectedCity: PLATEAU_CITIES[0],
+      setSelectedCity: (city) => set({ selectedCity: city, buildingProps: null }),
+
+      // マップ
+      mapMode: 'select',
+      setMapMode: (mode) => {
+        if (mode !== 'zone') set({ drawingZonePoints: [] })
+        set({ mapMode: mode })
+      },
+      buildingProps: null,
+      setBuildingProps: (props) => set({ buildingProps: props }),
+
+      // ピン
+      pins: [],
+      addPin: (lon, lat, alt) => {
+        const pin: DronePin = {
+          id: uid(), name: `ポイント ${get().pins.length + 1}`,
+          lon, lat, alt, color: '#58a6ff', createdAt: new Date().toISOString(),
+        }
+        set((s) => ({ pins: [...s.pins, pin] }))
+        return pin
+      },
+      updatePin: (id, patch) =>
+        set((s) => ({ pins: s.pins.map((p) => (p.id === id ? { ...p, ...patch } : p)) })),
+      deletePin: (id) => set((s) => ({ pins: s.pins.filter((p) => p.id !== id) })),
+
+      // ゾーン
+      drawingZonePoints: [],
+      addDrawingPoint: (lon, lat) =>
+        set((s) => ({ drawingZonePoints: [...s.drawingZonePoints, [lon, lat]] })),
+      resetDrawingPoints: () => set({ drawingZonePoints: [] }),
+      commitZone: (name, type) => {
+        const pts = get().drawingZonePoints
+        if (pts.length < 3) return
+        const zone: FlightZone = {
+          id: uid(), name, type, coordinates: pts, createdAt: new Date().toISOString(),
+        }
+        set((s) => ({ zones: [...s.zones, zone], drawingZonePoints: [], mapMode: 'select' }))
+      },
+      zones: [],
+      updateZone: (id, patch) =>
+        set((s) => ({ zones: s.zones.map((z) => (z.id === id ? { ...z, ...patch } : z)) })),
+      deleteZone: (id) => set((s) => ({ zones: s.zones.filter((z) => z.id !== id) })),
+
+      // 飛行計画
+      plans: [],
+      activePlanId: null,
+      setActivePlanId: (id) => set({ activePlanId: id }),
+      addPlan: () => {
+        const plan: FlightPlan = {
+          id: uid(), name: `飛行計画 ${get().plans.length + 1}`,
+          cityId: get().selectedCity.id, waypoints: [],
+          maxAltAGL: 60, status: 'draft',
+          createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(),
+        }
+        set((s) => ({ plans: [...s.plans, plan], activePlanId: plan.id }))
+        return plan
+      },
+      updatePlan: (id, patch) =>
+        set((s) => ({
+          plans: s.plans.map((p) =>
+            p.id === id ? { ...p, ...patch, updatedAt: new Date().toISOString() } : p
+          ),
+        })),
+      deletePlan: (id) =>
+        set((s) => ({
+          plans: s.plans.filter((p) => p.id !== id),
+          activePlanId: s.activePlanId === id ? null : s.activePlanId,
+        })),
+      addWaypoint: (planId, lon, lat) => {
+        const plan = get().plans.find((p) => p.id === planId)
+        if (!plan) return
+        const wp: Waypoint = {
+          id: uid(), lon, lat, altAGL: 50, speedMS: 5, action: 'none',
+        }
+        get().updatePlan(planId, { waypoints: [...plan.waypoints, wp] })
+      },
+      updateWaypoint: (planId, wpId, patch) => {
+        const plan = get().plans.find((p) => p.id === planId)
+        if (!plan) return
+        get().updatePlan(planId, {
+          waypoints: plan.waypoints.map((w) => (w.id === wpId ? { ...w, ...patch } : w)),
+        })
+      },
+      deleteWaypoint: (planId, wpId) => {
+        const plan = get().plans.find((p) => p.id === planId)
+        if (!plan) return
+        get().updatePlan(planId, { waypoints: plan.waypoints.filter((w) => w.id !== wpId) })
+      },
+
+      // 飛行記録
+      records: [],
+      addRecord: (planId) => {
+        const plan = planId ? get().plans.find((p) => p.id === planId) : undefined
+        const rec: FlightRecord = {
+          id: uid(),
+          planId,
+          name: plan ? `${plan.name} 記録` : `飛行記録 ${get().records.length + 1}`,
+          pilot: plan?.pilotName ?? '',
+          date: new Date().toISOString().slice(0, 10),
+          status: 'planned',
+          createdAt: new Date().toISOString(),
+        }
+        set((s) => ({ records: [rec, ...s.records] }))
+        return rec
+      },
+      updateRecord: (id, patch) =>
+        set((s) => ({ records: s.records.map((r) => (r.id === id ? { ...r, ...patch } : r)) })),
+      deleteRecord: (id) => set((s) => ({ records: s.records.filter((r) => r.id !== id) })),
+
+      // メディア
+      media: [],
+      addMedia: (item) =>
+        set((s) => ({ media: [{ ...item, id: uid() }, ...s.media] })),
+      deleteMedia: (id) => set((s) => ({ media: s.media.filter((m) => m.id !== id) })),
+
+      // シミュレーション (永続化しない)
+      simulation: null,
+      startSimulation: (planId) => {
+        const plan = get().plans.find((p) => p.id === planId)
+        if (!plan || plan.waypoints.length < 2) return
+        // 総距離から所要時間を計算
+        let totalMs = 0
+        for (let i = 0; i < plan.waypoints.length - 1; i++) {
+          const a = plan.waypoints[i], b = plan.waypoints[i + 1]
+          const dx = (b.lon - a.lon) * 111320 * Math.cos((a.lat * Math.PI) / 180)
+          const dy = (b.lat - a.lat) * 110540
+          const dz = b.altAGL - a.altAGL
+          const dist = Math.sqrt(dx * dx + dy * dy + dz * dz)
+          totalMs += (dist / a.speedMS) * 1000
+        }
+        set({
+          simulation: {
+            planId, playing: true, speed: 1, progress: 0,
+            startedAt: Date.now(), totalMs,
+            dronePos: [plan.waypoints[0].lon, plan.waypoints[0].lat, plan.waypoints[0].altAGL],
+          },
+          sidebarTab: 'plans',
+          activePlanId: planId,
+          mapMode: 'select',
+        })
+      },
+      stopSimulation: () => set({ simulation: null }),
+      setSimulation: (patch) =>
+        set((s) => ({ simulation: s.simulation ? { ...s.simulation, ...patch } : null })),
+
+      // UI
+      sidebarTab: 'map',
+      setSidebarTab: (tab) => set({ sidebarTab: tab }),
+      sidebarOpen: true,
+      setSidebarOpen: (open) => set({ sidebarOpen: open }),
+    }),
+    {
+      name: 'drone-store',
+      // シミュレーション状態は永続化しない
+      partialize: (s) => ({
+        selectedCity: s.selectedCity,
+        pins: s.pins,
+        zones: s.zones,
+        plans: s.plans,
+        records: s.records,
+        media: s.media.map((m) => ({ ...m, dataUrl: undefined })), // thumbnailは除外
+      }),
+    }
+  )
+)
