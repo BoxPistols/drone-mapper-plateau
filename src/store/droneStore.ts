@@ -1,5 +1,6 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
+import { droneSimBridge } from '../sim/droneSimBridge'
 import type {
   CityConfig,
   DronePin,
@@ -12,6 +13,7 @@ import type {
   BuildingProperties,
   SimState,
   Waypoint,
+  MapPopupState,
 } from '../types'
 
 // デフォルト都市リスト
@@ -63,8 +65,9 @@ interface DroneStore {
   // ゾーン (描画中)
   drawingZonePoints: [number, number][]
   addDrawingPoint: (lon: number, lat: number) => void
+  removeLastDrawingPoint: () => void
   resetDrawingPoints: () => void
-  commitZone: (name: string, type: FlightZone['type']) => void
+  commitZone: (name: string, type: FlightZone['type'], pts?: [number, number][]) => void
   zones: FlightZone[]
   updateZone: (id: string, patch: Partial<FlightZone>) => void
   deleteZone: (id: string) => void
@@ -102,6 +105,13 @@ interface DroneStore {
   setSidebarTab: (tab: SidebarTab) => void
   sidebarOpen: boolean
   setSidebarOpen: (open: boolean) => void
+
+  // マップポップアップ
+  mapPopup: MapPopupState | null
+  setMapPopup: (popup: MapPopupState | null) => void
+
+  // サンプルデータ
+  seedExampleData: () => void
 }
 
 export const useDroneStore = create<DroneStore>()(
@@ -138,12 +148,15 @@ export const useDroneStore = create<DroneStore>()(
       drawingZonePoints: [],
       addDrawingPoint: (lon, lat) =>
         set((s) => ({ drawingZonePoints: [...s.drawingZonePoints, [lon, lat]] })),
+      removeLastDrawingPoint: () =>
+        set((s) => ({ drawingZonePoints: s.drawingZonePoints.slice(0, -1) })),
       resetDrawingPoints: () => set({ drawingZonePoints: [] }),
-      commitZone: (name, type) => {
-        const pts = get().drawingZonePoints
-        if (pts.length < 3) return
+      commitZone: (name, type, pts) => {
+        // pts が渡された場合はそちらを使用（ダブルクリック余剰点除去済み）
+        const coords = pts ?? get().drawingZonePoints
+        if (coords.length < 3) return
         const zone: FlightZone = {
-          id: uid(), name, type, coordinates: pts, createdAt: new Date().toISOString(),
+          id: uid(), name, type, coordinates: coords, createdAt: new Date().toISOString(),
         }
         set((s) => ({ zones: [...s.zones, zone], drawingZonePoints: [], mapMode: 'select' }))
       },
@@ -180,8 +193,12 @@ export const useDroneStore = create<DroneStore>()(
       addWaypoint: (planId, lon, lat) => {
         const plan = get().plans.find((p) => p.id === planId)
         if (!plan) return
+        const prev = plan.waypoints[plan.waypoints.length - 1]
         const wp: Waypoint = {
-          id: uid(), lon, lat, altAGL: 50, speedMS: 5, action: 'none',
+          id: uid(), lon, lat,
+          altAGL: prev?.altAGL ?? 50,   // 前WPの高度を引き継ぐ
+          speedMS: prev?.speedMS ?? 5,  // 前WPの速度を引き継ぐ
+          action: 'none',
         }
         get().updatePlan(planId, { waypoints: [...plan.waypoints, wp] })
       },
@@ -239,18 +256,28 @@ export const useDroneStore = create<DroneStore>()(
           const dist = Math.sqrt(dx * dx + dy * dy + dz * dz)
           totalMs += (dist / a.speedMS) * 1000
         }
+        // ブリッジを初期位置で初期化
+        const w0 = plan.waypoints[0]
+        droneSimBridge.active = true
+        droneSimBridge.lon = w0.lon
+        droneSimBridge.lat = w0.lat
+        droneSimBridge.altAGL = w0.altAGL
+        droneSimBridge.heading = 0
         set({
           simulation: {
             planId, playing: true, speed: 1, progress: 0,
             startedAt: Date.now(), totalMs,
-            dronePos: [plan.waypoints[0].lon, plan.waypoints[0].lat, plan.waypoints[0].altAGL],
+            cameraMode: 'free',
           },
           sidebarTab: 'plans',
           activePlanId: planId,
           mapMode: 'select',
         })
       },
-      stopSimulation: () => set({ simulation: null }),
+      stopSimulation: () => {
+        droneSimBridge.active = false
+        set({ simulation: null })
+      },
       setSimulation: (patch) =>
         set((s) => ({ simulation: s.simulation ? { ...s.simulation, ...patch } : null })),
 
@@ -259,6 +286,107 @@ export const useDroneStore = create<DroneStore>()(
       setSidebarTab: (tab) => set({ sidebarTab: tab }),
       sidebarOpen: true,
       setSidebarOpen: (open) => set({ sidebarOpen: open }),
+
+      // マップポップアップ
+      mapPopup: null,
+      setMapPopup: (popup) => set({ mapPopup: popup }),
+
+      // サンプルデータ（台東区ベース）
+      seedExampleData: () => {
+        const city = PLATEAU_CITIES.find((c) => c.id === 'taito') ?? PLATEAU_CITIES[0]
+        const now = new Date().toISOString()
+
+        const pins: DronePin[] = [
+          { id: uid(), name: '浅草寺', lon: 139.7967, lat: 35.7148, alt: 8, color: '#58a6ff', note: '離陸予定地点', createdAt: now },
+          { id: uid(), name: '上野恩賜公園', lon: 139.7714, lat: 35.7148, alt: 5, color: '#7ee787', note: '経由点', createdAt: now },
+          { id: uid(), name: '隅田公園', lon: 139.8008, lat: 35.7198, alt: 6, color: '#ffa657', note: '着陸予定地点', createdAt: now },
+        ]
+
+        const zones: FlightZone[] = [
+          {
+            id: uid(), name: '浅草飛行エリア', type: 'planned',
+            coordinates: [
+              [139.790, 35.710], [139.804, 35.710],
+              [139.804, 35.720], [139.790, 35.720],
+            ],
+            maxAlt: 120, createdAt: now,
+          },
+          {
+            id: uid(), name: '上野公園 飛行禁止', type: 'restricted',
+            coordinates: [
+              [139.768, 35.712], [139.776, 35.712],
+              [139.776, 35.719], [139.768, 35.719],
+            ],
+            note: '特別天然記念物保護区域', createdAt: now,
+          },
+        ]
+
+        const planId = uid()
+        const waypoints: Waypoint[] = [
+          { id: uid(), lon: 139.7940, lat: 35.7110, altAGL: 30, speedMS: 5, action: 'none' },
+          { id: uid(), lon: 139.7980, lat: 35.7130, altAGL: 60, speedMS: 8, action: 'photo' },
+          { id: uid(), lon: 139.8020, lat: 35.7160, altAGL: 100, speedMS: 10, action: 'none' },
+          { id: uid(), lon: 139.8010, lat: 35.7195, altAGL: 80, speedMS: 8, action: 'photo' },
+          { id: uid(), lon: 139.7960, lat: 35.7180, altAGL: 50, speedMS: 5, action: 'hover', hoverSec: 10 },
+          { id: uid(), lon: 139.7940, lat: 35.7110, altAGL: 30, speedMS: 5, action: 'none' },
+        ]
+        const plan: FlightPlan = {
+          id: planId, name: '浅草〜隅田川 試験飛行', cityId: city.id,
+          waypoints, maxAltAGL: 120, droneModel: 'DJI Mavic 3E',
+          pilotName: '山田 太郎', plannedDate: new Date().toISOString().slice(0, 10),
+          estimatedMinutes: 15, status: 'draft',
+          createdAt: now, updatedAt: now,
+        }
+
+        const recId = uid()
+        const records: FlightRecord[] = [
+          {
+            id: recId, planId, name: '浅草〜隅田川 試験飛行 記録', pilot: '山田 太郎',
+            date: new Date().toISOString().slice(0, 10),
+            weather: '晴れ', windMS: 3.5, maxAltActual: 98, distanceM: 2400,
+            notes: 'ウェイポイント5でホバリング撮影実施', status: 'completed',
+            createdAt: now,
+          },
+        ]
+
+        droneSimBridge.active = false
+
+        // 総飛行時間計算
+        let totalMs = 0
+        for (let i = 0; i < waypoints.length - 1; i++) {
+          const a = waypoints[i], b = waypoints[i + 1]
+          const dx = (b.lon - a.lon) * 111320 * Math.cos((a.lat * Math.PI) / 180)
+          const dy = (b.lat - a.lat) * 110540
+          const dz = b.altAGL - a.altAGL
+          totalMs += (Math.sqrt(dx * dx + dy * dy + dz * dz) / a.speedMS) * 1000
+        }
+
+        // ブリッジ初期化
+        const w0 = waypoints[0]
+        droneSimBridge.active = true
+        droneSimBridge.lon = w0.lon
+        droneSimBridge.lat = w0.lat
+        droneSimBridge.altAGL = w0.altAGL
+        droneSimBridge.heading = 0
+
+        set({
+          selectedCity: city,
+          pins, zones,
+          plans: [plan], activePlanId: planId,
+          records,
+          mapPopup: null,
+          sidebarTab: 'plans',
+          // シミュレーション自動開始（追従カメラ）
+          simulation: {
+            planId, playing: true, speed: 1, progress: 0,
+            startedAt: Date.now(), totalMs,
+            cameraMode: 'follow',
+          },
+        })
+
+        // カメラを台東区に移動してからシミュレーション開始
+        window.dispatchEvent(new CustomEvent('cesium:flyToCity'))
+      },
     }),
     {
       name: 'drone-store',

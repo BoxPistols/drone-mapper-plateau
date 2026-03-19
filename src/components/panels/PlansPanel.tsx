@@ -3,17 +3,17 @@ import { useDroneStore } from '../../store/droneStore'
 import type { FlightPlan, Waypoint, WaypointAction, PlanStatus } from '../../types'
 
 const STATUS_LABELS: Record<PlanStatus, string> = {
-  draft:     '草稿',
-  approved:  '承認済',
+  draft:     '作成中',
+  approved:  '承認済み',
   completed: '完了',
 }
 
 const ACTION_LABELS: Record<WaypointAction, string> = {
-  none:        '無し',
-  photo:       '撮影',
-  video_start: '録画開始',
-  video_stop:  '録画停止',
-  hover:       'ホバリング',
+  none:        'なし',
+  photo:       '写真を撮る',
+  video_start: '動画撮影を開始',
+  video_stop:  '動画撮影を停止',
+  hover:       'その場で停止',
 }
 
 interface PlanDetailProps {
@@ -35,7 +35,7 @@ function PlanDetail({ plan, onBack }: PlanDetailProps) {
   return (
     <div className="panel plan-detail">
       <div className="panel-back">
-        <button className="back-btn" onClick={onBack}>← 一覧</button>
+        <button className="back-btn" onClick={onBack}>← 一覧へ戻る</button>
         <span className={`status-badge status-${plan.status}`}>{STATUS_LABELS[plan.status]}</span>
       </div>
 
@@ -45,29 +45,29 @@ function PlanDetail({ plan, onBack }: PlanDetailProps) {
           className="plan-name-input"
           value={plan.name}
           onChange={(e) => updatePlan(plan.id, { name: e.target.value })}
-          placeholder="計画名"
+          placeholder="計画の名前"
         />
         <div className="plan-meta-grid">
           <label>パイロット
-            <input value={plan.pilotName ?? ''} placeholder="氏名"
+            <input value={plan.pilotName ?? ''} placeholder="担当者名"
               onChange={(e) => updatePlan(plan.id, { pilotName: e.target.value })} />
           </label>
           <label>機体
-            <input value={plan.droneModel ?? ''} placeholder="DJI Mini 4 Pro等"
+            <input value={plan.droneModel ?? ''} placeholder="例: DJI Mini 4 Pro"
               onChange={(e) => updatePlan(plan.id, { droneModel: e.target.value })} />
           </label>
-          <label>計画日
+          <label>飛行予定日
             <input type="date" value={plan.plannedDate ?? ''}
               onChange={(e) => updatePlan(plan.id, { plannedDate: e.target.value })} />
           </label>
-          <label>最大高度
+          <label>最大飛行高さ
             <div className="input-unit">
               <input type="number" value={plan.maxAltAGL} min={0} max={150}
                 onChange={(e) => updatePlan(plan.id, { maxAltAGL: Number(e.target.value) })} />
-              <span>m AGL</span>
+              <span>m</span>
             </div>
           </label>
-          <label>ステータス
+          <label>状態
             <select value={plan.status}
               onChange={(e) => updatePlan(plan.id, { status: e.target.value as PlanStatus })}>
               {Object.entries(STATUS_LABELS).map(([v, l]) => (
@@ -79,16 +79,18 @@ function PlanDetail({ plan, onBack }: PlanDetailProps) {
         <textarea
           className="plan-desc"
           value={plan.description ?? ''}
-          placeholder="備考・目的"
+          placeholder="メモ・目的など"
           rows={2}
           onChange={(e) => updatePlan(plan.id, { description: e.target.value })}
         />
       </section>
 
-      {/* ウェイポイント */}
+      {/* 通過ポイント */}
       <section className="panel-section">
         <div className="panel-section-header">
-          <h3 className="panel-section-title">ウェイポイント ({plan.waypoints.length})</h3>
+          <h3 className="panel-section-title">
+            通過ポイント ({plan.waypoints.length})
+          </h3>
           <button
             className={`panel-tool-btn ${isActive && mapMode === 'waypoint' ? 'active' : ''}`}
             onClick={() => {
@@ -96,11 +98,14 @@ function PlanDetail({ plan, onBack }: PlanDetailProps) {
               setMapMode(mapMode === 'waypoint' && isActive ? 'select' : 'waypoint')
             }}
           >
-            + 追加
+            {isActive && mapMode === 'waypoint' ? '✓ 追加中' : '+ 地図で追加'}
           </button>
         </div>
         {plan.waypoints.length === 0 ? (
-          <p className="panel-empty">「+追加」でマップをクリックしてWPを配置</p>
+          <div className="panel-empty-guided">
+            <div className="guided-step-icon">📍</div>
+            <p>「地図で追加」ボタンを押してから<br />地図上をクリックすると<br />通過ポイントが追加されます</p>
+          </div>
         ) : (
           <ul className="item-list wp-list">
             {plan.waypoints.map((wp, idx) => (
@@ -118,23 +123,26 @@ function PlanDetail({ plan, onBack }: PlanDetailProps) {
       {/* アクション */}
       <section className="panel-section plan-actions">
         <button
-          className={`action-btn primary ${isActive ? 'active' : ''}`}
-          onClick={() => {
-            setActivePlanId(isActive ? null : plan.id)
-            if (!isActive) setMapMode('waypoint')
-          }}
-        >
-          {isActive ? '編集終了' : 'マップ編集'}
-        </button>
-        <button
           className={`action-btn sim-btn ${isSimulating ? 'active' : ''}`}
           disabled={plan.waypoints.length < 2}
           onClick={() => {
             if (isSimulating) return
             startSimulation(plan.id)
           }}
+          title={plan.waypoints.length < 2 ? '通過ポイントを2つ以上追加してください' : ''}
         >
-          ▶ シミュレート
+          {plan.waypoints.length < 2
+            ? '▶ まず通過ポイントを追加'
+            : '▶ 試しに飛ばしてみる'}
+        </button>
+        <button
+          className={`action-btn primary ${isActive ? 'active' : ''}`}
+          onClick={() => {
+            setActivePlanId(isActive ? null : plan.id)
+            if (!isActive) setMapMode('waypoint')
+          }}
+        >
+          {isActive ? '編集を終わる' : '通過ポイントを編集'}
         </button>
         <button
           className="action-btn record-btn"
@@ -143,13 +151,13 @@ function PlanDetail({ plan, onBack }: PlanDetailProps) {
             setSidebarTab('records')
           }}
         >
-          + 飛行記録作成
+          + 飛行記録をつける
         </button>
         <button
           className="action-btn danger"
-          onClick={() => { if (confirm('この計画を削除しますか？')) { deletePlan(plan.id); onBack() } }}
+          onClick={() => { if (confirm('この計画を削除してもよいですか？')) { deletePlan(plan.id); onBack() } }}
         >
-          削除
+          この計画を削除
         </button>
       </section>
     </div>
@@ -164,33 +172,40 @@ function WaypointRow({
   onDelete: () => void
 }) {
   const [open, setOpen] = useState(false)
+
+  const flyToWp = () => {
+    window.dispatchEvent(new CustomEvent('cesium:flyTo', { detail: { lat: wp.lat, lon: wp.lon } }))
+  }
+
   return (
     <li className="item-row wp-row">
       <button className="item-expand" onClick={() => setOpen(!open)}>
-        <span className="wp-num">{idx + 1}</span>
-        <span className="item-name">WP{idx + 1}</span>
+        <span className="wp-num" onClick={(e) => { e.stopPropagation(); flyToWp() }} title="地図で見る">
+          {idx + 1}
+        </span>
+        <span className="item-name">ポイント {idx + 1}</span>
         <span className="wp-alt">{wp.altAGL}m</span>
         <span className="wp-speed">{wp.speedMS}m/s</span>
       </button>
-      <button className="item-delete" onClick={onDelete}>×</button>
+      <button className="item-delete" onClick={onDelete} title="このポイントを削除">×</button>
       {open && (
         <div className="item-detail wp-detail">
           <div className="wp-detail-grid">
-            <label>高度(AGL)
+            <label>地上からの高さ
               <div className="input-unit">
                 <input type="number" min={10} max={150} value={wp.altAGL}
                   onChange={(e) => onUpdate({ altAGL: Number(e.target.value) })} />
                 <span>m</span>
               </div>
             </label>
-            <label>速度
+            <label>飛ぶ速さ
               <div className="input-unit">
                 <input type="number" min={1} max={20} value={wp.speedMS}
                   onChange={(e) => onUpdate({ speedMS: Number(e.target.value) })} />
                 <span>m/s</span>
               </div>
             </label>
-            <label>アクション
+            <label>このポイントでの動作
               <select value={wp.action} onChange={(e) => onUpdate({ action: e.target.value as WaypointAction })}>
                 {Object.entries(ACTION_LABELS).map(([v, l]) => (
                   <option key={v} value={v}>{l}</option>
@@ -198,7 +213,7 @@ function WaypointRow({
               </select>
             </label>
             {wp.action === 'hover' && (
-              <label>停止時間
+              <label>停止する時間
                 <div className="input-unit">
                   <input type="number" min={1} value={wp.hoverSec ?? 5}
                     onChange={(e) => onUpdate({ hoverSec: Number(e.target.value) })} />
@@ -232,13 +247,17 @@ export function PlansPanel() {
           setEditingId(plan.id)
           setActivePlanId(plan.id)
         }}>
-          + 新規作成
+          + 新しく作る
         </button>
       </div>
       {plans.length === 0 ? (
         <div className="panel-empty-state">
-          <p>飛行計画がありません</p>
-          <p className="panel-empty-hint">「新規作成」でウェイポイントを設定し<br />3Dシミュレーションを実行できます</p>
+          <div className="guided-step-icon">📋</div>
+          <p>飛行計画がまだありません</p>
+          <p className="panel-empty-hint">
+            「新しく作る」ボタンを押して<br />
+            ドローンの飛行ルートを設定しましょう
+          </p>
         </div>
       ) : (
         <ul className="item-list plan-list">
@@ -253,10 +272,10 @@ export function PlansPanel() {
                 <span className={`status-badge status-${plan.status}`}>{STATUS_LABELS[plan.status]}</span>
               </div>
               <div className="plan-card-meta">
-                {plan.pilotName && <span>{plan.pilotName}</span>}
-                {plan.plannedDate && <span>{plan.plannedDate}</span>}
-                <span>{plan.waypoints.length} WP</span>
-                <span>最大 {plan.maxAltAGL}m</span>
+                {plan.pilotName && <span>👤 {plan.pilotName}</span>}
+                {plan.plannedDate && <span>📅 {plan.plannedDate}</span>}
+                <span>📍 {plan.waypoints.length}ポイント</span>
+                <span>↕ 最大{plan.maxAltAGL}m</span>
               </div>
             </li>
           ))}

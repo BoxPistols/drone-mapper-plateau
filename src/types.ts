@@ -113,15 +113,26 @@ export interface MediaItem {
 }
 
 // ── シミュレーション ────────────────────────────
+export type CameraMode = 'free' | 'follow' | 'pov'
+
 export interface SimState {
   planId: string
   playing: boolean
   speed: number // 1 | 2 | 5 | 10
-  progress: number // 0.0 - 1.0
+  progress: number // 0.0 - 1.0 (UIシーカー用)
   startedAt: number | null // Date.now()
   totalMs: number // 総所要時間 ms (speed=1x)
-  dronePos: [number, number, number] | null // [lon, lat, altAGL]
+  cameraMode: CameraMode
+  // dronePos は droneSimBridge に移動（Reactレンダーを経由しない高速更新）
 }
 
 // ── アプリタブ ─────────────────────────────────
 export type SidebarTab = 'map' | 'plans' | 'records' | 'media'
+
+// ── マップ上エンティティポップアップ ────────────
+export interface MapPopupState {
+  type: 'pin' | 'zone'
+  id: string
+  x: number // canvas pixel (left of cesium canvas)
+  y: number // canvas pixel (top of cesium canvas)
+}

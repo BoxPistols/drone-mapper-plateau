@@ -1,209 +1,295 @@
-# アーキテクチャ
+# アーキテクチャ解説
+
+## 技術スタック
+
+| カテゴリ | 技術 | バージョン | 用途 |
+|---------|------|-----------|------|
+| フレームワーク | React | 19.x | UIコンポーネント管理 |
+| 言語 | TypeScript | 5.x | 型安全な実装 |
+| ビルド | Vite + vite-plugin-cesium | 8.x | 高速HMR・Cesiumアセット最適化 |
+| 状態管理 | Zustand + persist | 5.x | グローバル状態 + localStorage永続化 |
+| 3Dマップ | CesiumJS | 1.139.x | 3D地球・都市モデル・エンティティ描画 |
+| スタイル | CSS（単一ファイル） | — | App.css にすべてのスタイルを集約 |
+
+---
 
 ## ディレクトリ構成
 
 ```
-plateau-viewer/
-├── docs/                      # ドキュメント（本ドキュメント）
-├── public/
-│   ├── favicon.svg
-│   └── icons.svg
-├── src/
-│   ├── App.tsx                # ルートレイアウト
-│   ├── App.css                # 全スタイル
-│   ├── main.tsx
-│   ├── index.css
-│   ├── types.ts               # 全型定義
-│   ├── store/
-│   │   └── droneStore.ts      # Zustand グローバルストア
-│   └── components/
-│       ├── CesiumMap.tsx      # 3Dマップ（Cesium本体 + 全エンティティ）
-│       ├── Sidebar.tsx        # サイドバーナビ + パネル切替
-│       ├── LocationSearch.tsx # Nominatim 場所検索
-│       ├── BuildingInfo.tsx   # 建物属性フローティングパネル
-│       ├── map/
-│       │   ├── MapToolbar.tsx # マップモード切替ツールバー
-│       │   └── SimPlayer.tsx  # シミュレーション操作UI
-│       └── panels/
-│           ├── MapPanel.tsx   # 都市選択・ピン・ゾーン管理
-│           ├── PlansPanel.tsx # 飛行計画CRUD + WPエディタ
-│           ├── RecordsPanel.tsx # 飛行記録CRUD
-│           └── MediaPanel.tsx  # 撮影データ管理
-├── .env                       # VITE_CESIUM_TOKEN（gitignore済み）
-├── .gitignore
-├── package.json
-├── vite.config.ts
-└── tsconfig.app.json
+src/
+├── main.tsx                    # エントリーポイント
+├── App.tsx                     # ルートレイアウト（ヘッダー + サイドバー + マップエリア）
+├── App.css                     # 全スタイル（カラーシステム・コンポーネント定義）
+├── types.ts                    # 全型定義（10インターフェース）
+│
+├── sim/
+│   └── droneSimBridge.ts       # Reactを迂回する高速ミュータブルオブジェクト
+│
+├── store/
+│   └── droneStore.ts           # Zustandストア（全アプリ状態 + PLATEAU都市DB）
+│
+└── components/
+    ├── CesiumMap.tsx            # CesiumJS Viewer本体 + 全エンティティ管理
+    ├── Sidebar.tsx              # タブナビ + パネルコンテナ
+    ├── BuildingInfo.tsx         # 建物属性フローティングパネル
+    ├── LocationSearch.tsx       # Nominatim 場所検索
+    ├── HelpModal.tsx            # ヘルプモーダル
+    ├── map/
+    │   ├── MapToolbar.tsx       # マップモード切替ツールバー（選択/ピン/ゾーン/WP）
+    │   ├── SimPlayer.tsx        # シミュレーションHUD + コントロールバー
+    │   └── MapEntityPopup.tsx   # ピン/ゾーンのインラインポップアップ（CRUD）
+    └── panels/
+        ├── MapPanel.tsx         # 都市選択・ピン一覧・ゾーン一覧
+        ├── PlansPanel.tsx       # 飛行計画CRUD + WPエディタ
+        ├── RecordsPanel.tsx     # 飛行記録CRUD
+        └── MediaPanel.tsx       # 撮影データ管理
+```
+
+---
+
+## データモデル（types.ts）
+
+```
+CityConfig       都市設定（tilesUrl / 代表座標 / LOD）
+DronePin         地点マーカー（lon/lat/alt/color/note）
+FlightZone       飛行エリアポリゴン（type / coordinates[][]）
+Waypoint         ルートポイント（lon/lat/altAGL/speedMS/action）
+FlightPlan       飛行計画（waypoints[] / status / パイロット情報）
+FlightRecord     飛行記録（実績データ・天候・距離）
+MediaItem        撮影データ（photo/video + 位置情報）
+SimState         シミュレーション実行状態（非永続）
+MapPopupState    マップ上のポップアップ座標
+```
+
+### 高度の二重管理
+
+ドローンの高度は2種類の座標系で管理します：
+
+```
+altAGL（Above Ground Level）
+  └─ 飛行計画・WPで使用。地面からの相対高度（m）。
+     "30m AGL" = 地面の30m上、山の上でも平地でも意味が変わらない
+
+groundAlt（海抜 MSL）
+  └─ Cesium描画用。globe.getHeight() でシミュレーション中に毎フレーム取得。
+     実際の描画高度 = groundAlt + altAGL
 ```
 
 ---
 
 ## 状態管理（Zustand）
 
-全アプリ状態は `src/store/droneStore.ts` の単一ストアで管理します。
+`droneStore.ts` の単一ストアですべてのアプリ状態を管理します。
 
 ```typescript
-// 主要な状態グループ
-useDroneStore = {
-  // 都市
-  selectedCity: CityConfig
-
-  // マップモード
-  mapMode: 'select' | 'pin' | 'zone' | 'waypoint'
-
-  // データ（localStorageに永続化）
-  pins: DronePin[]
-  zones: FlightZone[]
-  plans: FlightPlan[]
-  records: FlightRecord[]
-  media: MediaItem[]
-
-  // ゾーン描画中の一時データ
-  drawingZonePoints: [number, number][]
-
-  // シミュレーション（永続化しない）
-  simulation: SimState | null
-
-  // UI
-  sidebarTab: 'map' | 'plans' | 'records' | 'media'
-  sidebarOpen: boolean
+interface DroneStore {
+  // 都市           選択中の PLATEAU 都市
+  // マップ          mapMode / buildingProps / mapPopup
+  // ピン            pins[] CRUD
+  // ゾーン          drawingZonePoints[] / zones[] CRUD
+  // 飛行計画        plans[] / activePlanId / waypoints CRUD
+  // 飛行記録        records[] CRUD
+  // 撮影データ      media[] CRUD
+  // シミュレーション simulation: SimState | null（非永続）
+  // UI             sidebarTab / sidebarOpen
 }
 ```
 
-### 永続化の仕組み
-`zustand/middleware` の `persist` を使用。`localStorage` への読み書きは自動。
-ただし `simulation` は `partialize` オプションで除外しています。
+### localStorage 永続化
 
----
+`zustand/middleware` の `persist` で自動保存。`simulation` は意図的に除外：
 
-## データモデル
-
-### CityConfig（都市設定）
 ```typescript
-interface CityConfig {
-  id: string
-  name: string
-  prefecture: string
-  tilesUrl: string    // tileset.json の URL
-  longitude: number   // 代表座標
-  latitude: number
-  height: number      // 初期カメラ高度
-  lod?: number        // 1 | 2 | 3
-  hasTexture?: boolean
-}
-```
-
-### FlightPlan（飛行計画）
-```typescript
-interface FlightPlan {
-  id: string
-  name: string
-  cityId: string
-  waypoints: Waypoint[]
-  maxAltAGL: number     // 最大地上高 (m)
-  droneModel?: string
-  pilotName?: string
-  plannedDate?: string
-  status: 'draft' | 'approved' | 'completed'
-  createdAt: string
-  updatedAt: string
-}
-```
-
-### Waypoint（ウェイポイント）
-```typescript
-interface Waypoint {
-  id: string
-  lon: number
-  lat: number
-  altAGL: number        // 地上高 (m)
-  speedMS: number       // 速度 (m/s)
-  action: 'none' | 'photo' | 'video_start' | 'video_stop' | 'hover'
-  hoverSec?: number
-  heading?: number      // 機首方位 (度)
-}
+partialize: (s) => ({
+  selectedCity: s.selectedCity,
+  pins: s.pins, zones: s.zones, plans: s.plans,
+  records: s.records,
+  media: s.media.map((m) => ({ ...m, dataUrl: undefined })), // thumbnail除外
+  // simulation: 除外（セッション限定）
+})
 ```
 
 ---
 
-## CesiumMap コンポーネント
+## CesiumMap.tsx の設計
 
-最も複雑なコンポーネント。Cesiumの初期化と全エンティティのレンダリングを担います。
+最も複雑なコンポーネント。複数の `useEffect` でライフサイクルを分割しています。
 
-### 処理の流れ
+### useEffect の責務分割
+
+| useEffect の依存 | 役割 |
+|---|---|
+| `[]`（マウント時のみ） | Viewer初期化・地形設定・イベントハンドラ登録 |
+| `[selectedCity]` | 3D Tilesの差し替え・カメラフライ |
+| `[pins, zones, plans, activePlanId, drawingZonePoints]` | 静的エンティティ（ピン/ゾーン/WP）の全再構築 |
+| `[simulation?.planId]` | ドローンエンティティ・preRenderループの生成/破棄 |
+| `[simulation?.cameraMode]` | カメラモード切替（free時のlookAt解除） |
+
+### クリックイベントの座標取得
+
+ピン・ゾーン・WP追加時の地表座標取得は3段階のフォールバック：
 
 ```
-useEffect([])         → Viewer初期化 + イベントハンドラ設定
-useEffect([city])     → 都市変更時: 3D Tilesの差し替え
-useEffect([pins, zones, plans, simulation...])
-                      → エンティティの全再構築
-window.on('cesium:flyTo') → 場所検索からのカメラ移動
+1. globe.pick(ray)         地形レイキャスト（最優先・エンティティを無視）
+2. scene.pickPosition()    Cesium3DTileFeature上のみ（建物屋上対応）
+3. pickEllipsoid()         地形未ロード時の最終手段
 ```
 
-### エンティティ管理
-毎回 `entityRefs.current` の配列を全削除して再構築するシンプルな方式を採用。
-パフォーマンスより実装のシンプルさを優先しています。
+**重要**: `scene.pickPosition()` は既存エンティティの深度バッファも読むため、
+ピン/ゾーンが先に検出されると誤った位置を返す。`globe.pick()` を最優先にすることで
+エンティティに惑わされない正確な地形座標を取得できる。
 
-### クリックイベント処理
+### エンティティID規約
+
+クリック時の識別にCesiumエンティティのIDを使用：
+
 ```
-mapMode === 'select'   → scene.pick() → Cesium3DTileFeature → 建物属性
-mapMode === 'pin'      → pickEllipsoid() → lon/lat → addPin()
-mapMode === 'zone'     → pickEllipsoid() → addDrawingPoint()
-mapMode === 'waypoint' → pickEllipsoid() → addWaypoint(activePlanId)
-ダブルクリック(zone)   → commitZone()
+"pin:{uuid}"    ピンエンティティ
+"zone:{uuid}"   ゾーンエンティティ
 ```
 
-### 場所検索との連携
-`window.dispatchEvent(new CustomEvent('cesium:flyTo', ...))` で疎結合。
-LocationSearch → App.tsx → window event → CesiumMap の流れ。
+### マウス操作の仕様
+
+| 操作 | select モード | zone モード |
+|---|---|---|
+| 左クリック | ピン/ゾーン→ポップアップ、建物→属性表示 | 頂点追加 |
+| 右クリック | ピン/ゾーン→削除確認 | 最後の頂点をアンドゥ |
+| ダブルクリック | ピン/ゾーン→編集ポップアップ | ゾーン確定 |
+| Escキー | ポップアップ閉じる | 描画キャンセル |
 
 ---
 
-## シミュレーション
+## シミュレーションのアーキテクチャ
 
-### アーキテクチャ
-Cesiumの `viewer.clock` を使わず、`requestAnimationFrame` による手動アニメーション。
+### Bridge Pattern（droneSimBridge）
+
+60fpsのシミュレーションでReactのレンダーサイクルを迂回するための設計：
 
 ```
-SimPlayer.tsx (UI)
-  ↓ setSimulation({ playing: true })
-droneStore.ts (SimState)
-  ↑ setSimulation({ dronePos, progress })
-SimPlayer.tsx (useEffect)
-  → requestAnimationFrame loop
-  → 線形補間でdronePos更新
-  → droneStore経由でCesiumMapに通知
-CesiumMap.tsx
-  → useEffect([simulation?.dronePos])
-  → droneEntityの位置更新
+SimPlayer.tsx（RAF ループ）
+    │  毎フレーム書き込み（React state を経由しない）
+    ▼
+droneSimBridge = { active, lon, lat, altAGL, groundAlt, heading }
+    │  毎フレーム読み出し（preRender）
+    ▼
+CesiumMap.tsx（viewer.scene.preRender）
+    │  地盤高更新 + カメラ制御 + CallbackProperty で描画
+    ▼
+ドローンエンティティ（CesiumJS Viewer）
 ```
 
-### 補間計算
+**なぜ必要か**: React の `setState` は非同期でバッチ処理される。60fpsの位置更新を
+`setState` 経由で行うとレンダリングが追いつかず、ドローンが飛行ではなくテレポートする。
+Bridge オブジェクトはただのミュータブルな JS オブジェクトなので、書き込みと読み出しは即時。
+
+### SimPlayer: RAF ループの実装
+
 ```typescript
-// segProgress: 0 = WP1, 1 = WP2, 2 = WP3 ...
-const segProgress = progress * (waypoints.length - 1)
-const segIdx = Math.floor(segProgress)
-const frac = segProgress - segIdx
+const tick = () => {
+  const elapsed = (Date.now() - sim.startedAt) * sim.speed
+  const progress = Math.min(elapsed / sim.totalMs, 1.0)
 
-position = lerp(waypoints[segIdx], waypoints[segIdx+1], frac)
+  // ウェイポイント間の線形補間
+  const segIdx = Math.min(Math.floor(progress * totalSegs), totalSegs - 1)
+  const frac = (progress * totalSegs) - segIdx
+  const a = wps[segIdx], b = wps[segIdx + 1]
+
+  droneSimBridge.lon     = a.lon    + (b.lon    - a.lon)    * frac
+  droneSimBridge.lat     = a.lat    + (b.lat    - a.lat)    * frac
+  droneSimBridge.altAGL  = a.altAGL + (b.altAGL - a.altAGL) * frac
+  droneSimBridge.heading = Math.atan2(b.lon - a.lon, b.lat - a.lat) * (180 / Math.PI)
+
+  setSimulation({ progress })  // UIのシーカーだけ React state で更新
+
+  if (progress >= 1.0) { /* 完了処理 */ return }
+  rafRef.current = requestAnimationFrame(tick)
+}
 ```
 
-### 所要時間計算
+### CesiumMap: preRender ループ
+
 ```typescript
-// 3D距離（水平 + 垂直）/ 速度
-dist = sqrt(dx² + dy² + dz²)   // dx/dy: メートル換算
-time += dist / wp.speedMS
+viewer.scene.preRender.addEventListener(() => {
+  // 1. 地盤高を同期取得（ロード済みタイルから高速に返る）
+  const carto = Cartographic.fromDegrees(droneSimBridge.lon, droneSimBridge.lat)
+  droneSimBridge.groundAlt = viewer.scene.globe.getHeight(carto) ?? 0
+
+  // 2. 描画位置 = 地盤高(MSL) + 飛行高度(AGL)
+  const pos = Cartesian3.fromDegrees(lon, lat, droneSimBridge.groundAlt + droneSimBridge.altAGL)
+
+  // 3. カメラ制御（モード別）
+  if (cameraMode === 'follow') {
+    // 機首の真後ろ（heading + π）から追う
+    viewer.camera.lookAt(pos, new HeadingPitchRange(headingRad + Math.PI, pitch, dist))
+  } else if (cameraMode === 'pov') {
+    // ドローン位置から前方を向く（FPV）
+    viewer.camera.setView({ destination: pos, orientation: { heading, pitch: -12°, roll: 0 } })
+  }
+  // free モードは何もしない（カメラ解放済み）
+})
+```
+
+### CallbackProperty
+
+ドローンの position・ラベル・カメラFOV楕円を毎フレーム更新するための仕組み：
+
+```typescript
+const dronePositionCB = new CallbackProperty(() =>
+  Cartesian3.fromDegrees(droneSimBridge.lon, droneSimBridge.lat,
+    droneSimBridge.groundAlt + droneSimBridge.altAGL)
+, false)  // false = 値がミュータブル（毎フレーム再評価）
 ```
 
 ---
 
-## 設計上の判断
+## コンポーネント間の通信
+
+```
+[App.tsx]
+  │ props       → Sidebar / CesiumMap / SimPlayer / MapEntityPopup
+  │ useState    → helpOpen
+
+[useDroneStore]（Zustand）
+  │ グローバル  → すべてのコンポーネントから直接購読・更新
+
+[window CustomEvent]（疎結合のイベントバス）
+  │ 'cesium:flyTo'      LocationSearch → CesiumMap（場所検索）
+  │ 'cesium:flyToCity'  App ヘッダー  → CesiumMap（都市に戻る）
+
+[droneSimBridge]（モジュールレベルのミュータブル参照）
+  │ SimPlayer → CesiumMap（60fps位置更新）
+```
+
+---
+
+## PLATEAU 都市データベース
+
+`droneStore.ts` の `PLATEAU_CITIES` 配列に7都市を定義：
+
+| 都市 | LOD | テクスチャ | tileset URL の由来 |
+|---|---|---|---|
+| 台東区 | 2 | なし | PLATEAU CMS |
+| 港区 | 2 | なし | PLATEAU CMS |
+| 仙台市 | 2 | なし | PLATEAU CMS |
+| 加賀市 | 2 | なし | PLATEAU CMS |
+| 沼津市 | 3 | **あり** | PLATEAU CMS |
+| 広島市 | 2 | なし | PLATEAU CMS |
+| 福岡市 | 2 | **あり** | PLATEAU CMS |
+
+LOD3・テクスチャ付き都市は `hasTexture: true` フラグで識別し、
+白色スタイルの適用をスキップする。
+
+---
+
+## 設計上の主要な判断
 
 | 判断 | 理由 |
-|------|------|
-| Zustand（Context不使用） | 複数パネルからの参照が多く、Context のネストが深くなるため |
-| localStorage 永続化 | サーバーサイド不要でMVPとして十分。データ量が増えたらIndexedDBへ移行 |
-| エンティティ全再構築 | 差分更新は複雑になりバグリスクが高い。60FPS不要なので再構築コストは許容 |
-| RAF手動アニメーション | Cesiumの `viewer.clock` との連携が複雑。再生/一時停止/シークを独自実装する方が制御しやすい |
-| Nominatim OSM | 無料・APIキー不要。利用規約（User-Agentヘッダ推奨）を遵守すること |
-| window イベントバス | LocationSearch → Cesium 間の直接のprops/refチェーンを避けるため |
+|---|---|
+| `globe.pick()` を座標取得の最優先に | `scene.pick()` は既存エンティティを拾い `pickPosition()` が誤座標を返すバグを回避 |
+| Bridge Pattern（droneSimBridge） | 60fps更新をReactのバッチ処理から切り離し、ドローンを滑らかに飛ばすため |
+| エンティティの全再構築方式 | 差分更新は複雑でバグリスクが高い。静的エンティティは再構築コストが許容範囲 |
+| simulation を localStorage 非永続化 | リロード時に不完全な状態で再開するより、初期状態から始める方がUXが良い |
+| `RAF` + `viewer.clock` 不使用 | Cesium clockはタイムライン依存で複雑。再生/一時停止/シークの独自実装の方が制御しやすい |
+| `Matrix4.IDENTITY` で lookAt 解除 | `eastNorthUpToFixedFrame` をカメラ原点近くで使うと NaN になる既知バグを回避 |
+| window CustomEvent バス | LocationSearch → CesiumMap の直接props/refチェーンを避け、コンポーネントを疎結合に保つ |
+| `Space Grotesk` + `DM Sans` 混在 | HUDの数値表示は等幅（Space Grotesk）、日本語UIはヒューマニスト体（DM Sans）で可読性を分ける |
