@@ -118,11 +118,11 @@ export function CesiumMap() {
       selectionIndicator: false,
     })
 
-    // 地形 + 深度テスト（ピン位置精度に必要）
     if (import.meta.env.VITE_CESIUM_TOKEN) {
       createWorldTerrainAsync().then((t) => {
         viewer.terrainProvider = t
-        viewer.scene.globe.depthTestAgainstTerrain = true
+        // depthTestAgainstTerrain は意図的に設定しない:
+        // true にすると pickPosition() の挙動が変わりピッキング精度が下がる
       }).catch(() => {})
     }
 
@@ -251,43 +251,25 @@ export function CesiumMap() {
       }
 
       // ── 地表座標取得 ──────────────────────────────────────────
-      // 優先度1: scene.pickPosition（深度バッファ）← 地形+3DTile両対応の最も正確な方法
-      //   ただしエンティティ（ラベル・ポイント）の深度を拾わないよう drillPick で除外
-      // 優先度2: globe.pick（地形レイキャスト）← エンティティを完全無視
-      // 優先度3: 楕円体面+地形高度補正（フォールバック）
+      // globe.pick(ray): カメラからのレイと地形メッシュの交点を純粋な数学計算で求める。
+      // 深度バッファ・エンティティ・レンダリング状態に完全非依存 → 最も安定した手法。
+      // pickPosition() は PolylineGraphics 等で誤った深度を返すため使用しない。
       let cartesian: Cartesian3 | undefined
 
-      // pickPosition: depthTestAgainstTerrain=true 時は地形・建物の深度を正確に返す
-      // エンティティの深度バッファ干渉を避けるため、drillPickでEntityを除外してから判定
-      if (viewer.scene.pickPositionSupported) {
-        const drilled = viewer.scene.drillPick(pos, 10)
-        // Entity（ラベル・ポイント等）以外の何かがある場合のみ pickPosition を使う
-        const hasSurface = drilled.some((d) => !(d?.id instanceof Entity))
-        if (hasSurface || drilled.length === 0) {
-          try {
-            const p = viewer.scene.pickPosition(pos)
-            if (p && isFinite(p.x) && isFinite(p.y) && isFinite(p.z)) cartesian = p
-          } catch { /* noop */ }
-        }
+      const ray = viewer.camera.getPickRay(pos)
+      if (ray) {
+        const pt = viewer.scene.globe.pick(ray, viewer.scene)
+        if (pt) cartesian = pt
       }
 
-      // pickPosition が失敗した場合は globe.pick（地形のみ、エンティティ無視）
-      if (!cartesian) {
-        const ray = viewer.camera.getPickRay(pos)
-        if (ray) {
-          const globePt = viewer.scene.globe.pick(ray, viewer.scene)
-          if (globePt) cartesian = globePt
-        }
-      }
-
-      // 最終フォールバック: 楕円体面の交点を取得し、地形高度で補正して視差ずれを軽減
+      // フォールバック: 楕円体面との交点を取得し、ロード済みタイルの地形高度で補正
+      // （地形タイル未ロード時も視差ずれを最小化する）
       if (!cartesian) {
         const ell = viewer.camera.pickEllipsoid(pos, viewer.scene.globe.ellipsoid)
         if (ell) {
           const c = Cartographic.fromCartesian(ell)
-          // ロード済みタイルから地形高度を同期取得（未ロードなら0=海抜）
           const h = viewer.scene.globe.getHeight(c)
-          if (h !== undefined && h !== null) c.height = h
+          if (h != null) c.height = h
           cartesian = Cartographic.toCartesian(c)
         }
       }
