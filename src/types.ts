@@ -131,8 +131,9 @@ export type SidebarTab = 'map' | 'plans' | 'records' | 'media'
 
 // ── マップ上エンティティポップアップ ────────────
 export interface MapPopupState {
-  type: 'pin' | 'zone'
-  id: string
-  x: number // canvas pixel (left of cesium canvas)
-  y: number // canvas pixel (top of cesium canvas)
+  type: 'pin' | 'zone' | 'waypoint'
+  id: string        // pinId / zoneId / wpId
+  planId?: string   // waypoint の場合のみ
+  x: number         // canvas pixel (map-area左端起点)
+  y: number         // canvas pixel (map-area上端起点)
 }

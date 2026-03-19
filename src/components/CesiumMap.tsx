@@ -221,14 +221,24 @@ export function CesiumMap() {
         }
         const picked = viewer.scene.pick(pos)
 
-        // ── ピン / ゾーンエンティティのクリック ──
+        // ── ピン / ゾーン / ウェイポイントエンティティのクリック ──
         if (defined(picked) && picked.id instanceof Entity) {
           const eid: string = (picked.id as Entity).id ?? ''
-          if (eid.startsWith('pin:') || eid.startsWith('zone:')) {
-            const colonIdx = eid.indexOf(':')
-            const type = eid.slice(0, colonIdx) as 'pin' | 'zone'
-            const id = eid.slice(colonIdx + 1)
-            state.setMapPopup({ type, id, x: pos.x, y: pos.y })
+          if (eid.startsWith('pin:')) {
+            state.setMapPopup({ type: 'pin', id: eid.slice(4), x: pos.x, y: pos.y })
+            state.setBuildingProps(null)
+            return
+          }
+          if (eid.startsWith('zone:')) {
+            state.setMapPopup({ type: 'zone', id: eid.slice(5), x: pos.x, y: pos.y })
+            state.setBuildingProps(null)
+            return
+          }
+          if (eid.startsWith('wp:')) {
+            // wp:planId:wpId 形式
+            const parts = eid.split(':')
+            const planId = parts[1], wpId = parts[2]
+            state.setMapPopup({ type: 'waypoint', id: wpId, planId, x: pos.x, y: pos.y })
             state.setBuildingProps(null)
             return
           }
@@ -327,7 +337,8 @@ export function CesiumMap() {
     //   select モード + エンティティ → 削除確認
     //   その他 → ポップアップ閉じる
     handler.setInputAction((movement: { position: Cartesian2 }) => {
-      const { mapMode, drawingZonePoints, removeLastDrawingPoint, setMapMode, pins, zones, deletePin, deleteZone, setMapPopup } = useDroneStore.getState()
+      const { mapMode, drawingZonePoints, removeLastDrawingPoint, setMapMode,
+        pins, zones, plans, deletePin, deleteZone, deleteWaypoint, setMapPopup } = useDroneStore.getState()
       const pos = movement.position
 
       if (mapMode === 'zone') {
@@ -343,18 +354,22 @@ export function CesiumMap() {
           if (eid.startsWith('pin:')) {
             const id = eid.slice(4)
             const pin = pins.find((p) => p.id === id)
-            if (pin && confirm(`「${pin.name}」を削除しますか？`)) {
-              deletePin(id)
-              setMapPopup(null)
-            }
+            if (pin && confirm(`「${pin.name}」を削除しますか？`)) { deletePin(id); setMapPopup(null) }
             return
           }
           if (eid.startsWith('zone:')) {
             const id = eid.slice(5)
             const zone = zones.find((z) => z.id === id)
-            if (zone && confirm(`「${zone.name}」を削除しますか？`)) {
-              deleteZone(id)
-              setMapPopup(null)
+            if (zone && confirm(`「${zone.name}」を削除しますか？`)) { deleteZone(id); setMapPopup(null) }
+            return
+          }
+          if (eid.startsWith('wp:')) {
+            const parts = eid.split(':')
+            const planId = parts[1], wpId = parts[2]
+            const plan = plans.find((p) => p.id === planId)
+            const wpIdx = plan?.waypoints.findIndex((w) => w.id === wpId) ?? -1
+            if (plan && wpIdx >= 0 && confirm(`ポイント${wpIdx + 1}を削除しますか？`)) {
+              deleteWaypoint(planId, wpId); setMapPopup(null)
             }
             return
           }
@@ -527,11 +542,13 @@ export function CesiumMap() {
       wps.forEach((wp, idx) => {
         const isFirst = idx === 0, isLast = idx === wps.length - 1
         add(new Entity({
+          // クリック検出のため wp: プレフィックスで planId:wpId を格納
+          id: `wp:${activePlanId}:${wp.id}`,
           position: new ConstantPositionProperty(
             Cartesian3.fromDegrees(wp.lon, wp.lat, wp.altAGL)
           ),
           point: {
-            pixelSize: isFirst || isLast ? 14 : 10,
+            pixelSize: isFirst || isLast ? 16 : 12,
             color: isFirst
               ? Color.fromCssColorString('#3fb950')
               : isLast ? Color.fromCssColorString('#f85149')
@@ -541,11 +558,11 @@ export function CesiumMap() {
           },
           label: {
             text: `WP${idx + 1}\n${wp.altAGL}m`,
-            font: '11px "DM Sans"',
+            font: '12px sans-serif',
             fillColor: Color.WHITE, outlineColor: Color.BLACK, outlineWidth: 2,
             style: LabelStyle.FILL_AND_OUTLINE,
             verticalOrigin: VerticalOrigin.BOTTOM,
-            pixelOffset: { x: 0, y: -14 } as never,
+            pixelOffset: { x: 0, y: -16 } as never,
             scaleByDistance: new NearFarScalar(100, 1, 6000, 0.2),
             disableDepthTestDistance: Number.POSITIVE_INFINITY,
           },
