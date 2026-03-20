@@ -862,23 +862,20 @@ export function CesiumMap() {
 
       {/* ── マップコントロールパネル ── */}
       <div className="map-controls">
-        {/* 2D / Columbus / 3D 切り替え */}
+        {/* 平面 / 立体 切り替え — 飛行シミュレーション中は無効（Cesiumのモーフがクラッシュするため）*/}
         <div className="map-ctrl-group">
           <button
-            className={`map-ctrl-btn${sceneMode === '2d' ? ' active' : ''}`}
-            onClick={() => handleSceneMode('2d')}
-            title="2D平面マップ"
-          >2D</button>
+            className={`map-ctrl-btn${sceneMode === '2d' ? ' active' : ''}${store.simulation ? ' disabled' : ''}`}
+            onClick={() => !store.simulation && handleSceneMode('2d')}
+            title={store.simulation ? '飛行中は切替できません' : '真上から見る平面マップ'}
+            aria-disabled={!!store.simulation}
+          >平面</button>
           <button
-            className={`map-ctrl-btn${sceneMode === 'columbus' ? ' active' : ''}`}
-            onClick={() => handleSceneMode('columbus')}
-            title="2.5D コロンバスビュー"
-          >2.5D</button>
-          <button
-            className={`map-ctrl-btn${sceneMode === '3d' ? ' active' : ''}`}
-            onClick={() => handleSceneMode('3d')}
-            title="3Dグローブ"
-          >3D</button>
+            className={`map-ctrl-btn${sceneMode === '3d' ? ' active' : ''}${store.simulation ? ' disabled' : ''}`}
+            onClick={() => !store.simulation && handleSceneMode('3d')}
+            title={store.simulation ? '飛行中は切替できません' : '3D立体マップ'}
+            aria-disabled={!!store.simulation}
+          >立体</button>
         </div>
 
         <div className="map-ctrl-divider" />

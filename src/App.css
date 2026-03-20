@@ -592,6 +592,9 @@ textarea { resize: vertical; }
 }
 .map-ctrl-icon { height: 32px; }
 .map-ctrl-icon svg { width: 16px; height: 16px; }
+.map-ctrl-btn.disabled {
+  opacity: 0.35; cursor: not-allowed; pointer-events: none;
+}
 
 /* ── オーバーレイ ── */
 .overlay {

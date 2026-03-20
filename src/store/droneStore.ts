@@ -283,7 +283,7 @@ export const useDroneStore = create<DroneStore>()(
         const w0 = plan.waypoints[0], w1 = plan.waypoints[1]
         // WP0→WP1 の実際の飛行方向から初期ヘディングを計算
         // heading=0 (北向き) のまま放置するとPOVカメラが誤方向を向く
-        const initHeadingDeg = (Math.atan2(w1.lon - w0.lon, w1.lat - w0.lat) * (180 / Math.PI) + 180) % 360
+        const initHeadingDeg = Math.atan2(w1.lon - w0.lon, w1.lat - w0.lat) * (180 / Math.PI)
         droneSimBridge.active = true
         droneSimBridge.lon = w0.lon
         droneSimBridge.lat = w0.lat

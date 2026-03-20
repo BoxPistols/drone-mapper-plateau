@@ -108,9 +108,9 @@ export function SimPlayer() {
             droneSimBridge.lon     = a.lon    + (b.lon    - a.lon)    * frac
             droneSimBridge.lat     = a.lat    + (b.lat    - a.lat)    * frac
             droneSimBridge.altAGL  = a.altAGL + (b.altAGL - a.altAGL) * frac
-            // WP間の飛行方向: atan2(Δlon, Δlat) で北基準の方位角を算出し 180° 反転
-            // Cesiumのheadingは「カメラが向く方向」なので、飛行方向そのものに合わせる
-            droneSimBridge.heading = (Math.atan2(b.lon - a.lon, b.lat - a.lat) * (180 / Math.PI) + 180) % 360
+            // WP間の飛行方向: atan2(Δlon, Δlat) で北基準の方位角を算出
+            // atan2(y=Δlon, x=Δlat) → 北=0°, 東=90° のCesium heading と一致する
+            droneSimBridge.heading = Math.atan2(b.lon - a.lon, b.lat - a.lat) * (180 / Math.PI)
           } else {
             // ホバー: 対象WPで停止、heading は維持
             const wp = wps[phase.wpIdx]
@@ -164,9 +164,9 @@ export function SimPlayer() {
   const currentWp  = Math.min(segIdx + 2, wps.length)
 
   const CAMERA_LABELS: Record<CameraMode, string> = {
-    free:   '自由',
-    follow: '追いかける',
-    pov:    'ドローン視点',
+    free:   '俯瞰',      // 自由にカメラを動かせる（マウス/タッチで操作）
+    follow: '追跡',      // ドローンを後方から追いかける
+    pov:    '機体視点',  // ドローンが見ている映像（前方カメラ）
   }
 
   const handlePlayPause = () => {
@@ -309,9 +309,9 @@ export function SimPlayer() {
               className={`hud-cam-btn ${simulation.cameraMode === mode ? 'active' : ''}`}
               onClick={() => setSimulation({ cameraMode: mode })}
               title={{
-                free: 'カメラを自由に動かせます',
-                follow: 'ドローンを追いかけながら見ます',
-                pov: 'ドローンの視点で見ます',
+                free:   '俯瞰 — マウスやタッチで自由に地図を動かせます',
+                follow: '追跡 — ドローンを後ろから追いかけます',
+                pov:    '機体視点 — ドローンの前方カメラ映像です',
               }[mode]}
             >
               {CAMERA_LABELS[mode]}
