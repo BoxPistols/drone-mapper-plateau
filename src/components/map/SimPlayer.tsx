@@ -7,6 +7,35 @@ export function SimPlayer() {
   const { simulation, setSimulation, stopSimulation, plans } = useDroneStore()
   const rafRef = useRef<number | null>(null)
 
+  // ── Space キー: 再生 / 一時停止 ──
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.code !== 'Space' || e.target !== document.body) return
+      e.preventDefault()
+      const sim = useDroneStore.getState().simulation
+      if (!sim) return
+      if (sim.playing) {
+        useDroneStore.getState().setSimulation({ playing: false })
+      } else {
+        if (sim.progress >= 1.0) {
+          const plan = useDroneStore.getState().plans.find((p) => p.id === sim.planId)
+          const w0 = plan?.waypoints[0]
+          if (w0) {
+            droneSimBridge.lon = w0.lon; droneSimBridge.lat = w0.lat
+            droneSimBridge.altAGL = w0.altAGL; droneSimBridge.active = true
+          }
+          useDroneStore.getState().setSimulation({ playing: true, progress: 0, startedAt: Date.now() })
+        } else {
+          const remaining = sim.totalMs * (1 - sim.progress)
+          droneSimBridge.active = true
+          useDroneStore.getState().setSimulation({ playing: true, startedAt: Date.now() - (sim.totalMs - remaining) / sim.speed })
+        }
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [])
+
   // ── RAF アニメーションループ ──
   useEffect(() => {
     if (!simulation?.playing) {
@@ -16,6 +45,31 @@ export function SimPlayer() {
     const plan = plans.find((p) => p.id === simulation.planId)
     if (!plan || plan.waypoints.length < 2) return
 
+    // ── フェーズ列: 飛行セグメント + ホバー停止 ──────────────
+    // フェーズを経過時間ベースで管理することで速度差・ホバーを正確に再現する
+    type Phase =
+      | { type: 'fly';   segIdx: number; durationMs: number }
+      | { type: 'hover'; wpIdx:  number; durationMs: number }
+
+    const buildPhases = (): Phase[] => {
+      const wps = plan.waypoints
+      const result: Phase[] = []
+      for (let i = 0; i < wps.length - 1; i++) {
+        const a = wps[i], b = wps[i + 1]
+        const dx = (b.lon - a.lon) * 111320 * Math.cos((a.lat * Math.PI) / 180)
+        const dy = (b.lat - a.lat) * 110540
+        const dz = b.altAGL - a.altAGL
+        const dist = Math.sqrt(dx * dx + dy * dy + dz * dz)
+        result.push({ type: 'fly', segIdx: i, durationMs: Math.max((dist / a.speedMS) * 1000, 1) })
+        // 最終WPのホバーは意味がないので除外
+        if (b.action === 'hover' && b.hoverSec && i < wps.length - 2) {
+          result.push({ type: 'hover', wpIdx: i + 1, durationMs: b.hoverSec * 1000 })
+        }
+      }
+      return result
+    }
+    const phases = buildPhases()
+
     const tick = () => {
       const sim = useDroneStore.getState().simulation
       if (!sim || !sim.playing || sim.startedAt == null) return
@@ -23,17 +77,38 @@ export function SimPlayer() {
       const elapsed = (Date.now() - sim.startedAt) * sim.speed
       const progress = Math.min(elapsed / sim.totalMs, 1.0)
       const wps = plan.waypoints
-      const totalSegs = wps.length - 1
-      const segProgress = progress * totalSegs
-      const segIdx = Math.min(Math.floor(segProgress), totalSegs - 1)
-      const frac = segProgress - segIdx
-      const a = wps[segIdx]
-      const b = wps[Math.min(segIdx + 1, wps.length - 1)]
 
-      droneSimBridge.lon = a.lon + (b.lon - a.lon) * frac
-      droneSimBridge.lat = a.lat + (b.lat - a.lat) * frac
-      droneSimBridge.altAGL = a.altAGL + (b.altAGL - a.altAGL) * frac
-      droneSimBridge.heading = Math.atan2(b.lon - a.lon, b.lat - a.lat) * (180 / Math.PI)
+      // ── elapsed からフェーズを特定して位置を補間 ──────
+      let cumMs = 0
+      let positioned = false
+      for (const phase of phases) {
+        if (elapsed < cumMs + phase.durationMs) {
+          const frac = Math.min((elapsed - cumMs) / phase.durationMs, 1)
+          if (phase.type === 'fly') {
+            const a = wps[phase.segIdx], b = wps[phase.segIdx + 1]
+            droneSimBridge.lon     = a.lon    + (b.lon    - a.lon)    * frac
+            droneSimBridge.lat     = a.lat    + (b.lat    - a.lat)    * frac
+            droneSimBridge.altAGL  = a.altAGL + (b.altAGL - a.altAGL) * frac
+            droneSimBridge.heading = Math.atan2(b.lon - a.lon, b.lat - a.lat) * (180 / Math.PI)
+          } else {
+            // ホバー: 対象WPで停止、heading は維持
+            const wp = wps[phase.wpIdx]
+            droneSimBridge.lon    = wp.lon
+            droneSimBridge.lat    = wp.lat
+            droneSimBridge.altAGL = wp.altAGL
+          }
+          positioned = true
+          break
+        }
+        cumMs += phase.durationMs
+      }
+      if (!positioned) {
+        // 終端: 最終WPに固定
+        const last = wps[wps.length - 1]
+        droneSimBridge.lon    = last.lon
+        droneSimBridge.lat    = last.lat
+        droneSimBridge.altAGL = last.altAGL
+      }
 
       useDroneStore.getState().setSimulation({ progress })
 
@@ -99,16 +174,46 @@ export function SimPlayer() {
   const handleSeek = (e: React.ChangeEvent<HTMLInputElement>) => {
     const progress = parseFloat(e.target.value) / 100
     if (!plan) return
-    const sp = progress * Math.max(wps.length - 1, 1)
-    const si = Math.min(Math.floor(sp), wps.length - 2)
-    const fr = sp - si
-    const wa = wps[si], wb = wps[si + 1] ?? wps[si]
-    if (wa) {
-      droneSimBridge.lon = wa.lon + (wb.lon - wa.lon) * fr
-      droneSimBridge.lat = wa.lat + (wb.lat - wa.lat) * fr
-      droneSimBridge.altAGL = wa.altAGL + (wb.altAGL - wa.altAGL) * fr
-      droneSimBridge.active = true
+    const wps = plan.waypoints
+    const targetElapsed = simulation.totalMs * progress
+
+    // フェーズ列ベースでシーク位置を計算（tick と同じロジック）
+    type SPhase =
+      | { type: 'fly';   segIdx: number; durationMs: number }
+      | { type: 'hover'; wpIdx:  number; durationMs: number }
+    const phases2: SPhase[] = []
+    for (let i = 0; i < wps.length - 1; i++) {
+      const a = wps[i], b = wps[i + 1]
+      const dx = (b.lon - a.lon) * 111320 * Math.cos((a.lat * Math.PI) / 180)
+      const dy = (b.lat - a.lat) * 110540
+      const dz = b.altAGL - a.altAGL
+      const dist = Math.sqrt(dx * dx + dy * dy + dz * dz)
+      phases2.push({ type: 'fly', segIdx: i, durationMs: Math.max((dist / a.speedMS) * 1000, 1) })
+      if (b.action === 'hover' && b.hoverSec && i < wps.length - 2) {
+        phases2.push({ type: 'hover', wpIdx: i + 1, durationMs: b.hoverSec * 1000 })
+      }
     }
+
+    let cumMs = 0
+    for (const phase of phases2) {
+      if (targetElapsed < cumMs + phase.durationMs) {
+        const frac = Math.min((targetElapsed - cumMs) / phase.durationMs, 1)
+        if (phase.type === 'fly') {
+          const a = wps[phase.segIdx], b = wps[phase.segIdx + 1]
+          droneSimBridge.lon    = a.lon    + (b.lon    - a.lon)    * frac
+          droneSimBridge.lat    = a.lat    + (b.lat    - a.lat)    * frac
+          droneSimBridge.altAGL = a.altAGL + (b.altAGL - a.altAGL) * frac
+        } else {
+          const wp = wps[phase.wpIdx]
+          droneSimBridge.lon    = wp.lon
+          droneSimBridge.lat    = wp.lat
+          droneSimBridge.altAGL = wp.altAGL
+        }
+        break
+      }
+      cumMs += phase.durationMs
+    }
+    droneSimBridge.active = true
     setSimulation({ progress, playing: false, startedAt: Date.now() - (simulation.totalMs * progress) / simulation.speed })
   }
 

@@ -48,8 +48,9 @@ export interface Waypoint {
   id: string
   lon: number
   lat: number
-  altAGL: number // AGL: 地上高 (m)
-  speedMS: number // 速度 m/s
+  altAGL: number   // AGL: 地上高 (m) — ユーザーが指定する「地面から何m上」
+  groundAlt: number // 地盤高 MSL (m) — globe.getHeight() で取得した海抜高度
+  speedMS: number  // 速度 m/s
   action: WaypointAction
   hoverSec?: number
   heading?: number // 機首方位 deg
@@ -127,7 +128,14 @@ export interface SimState {
 }
 
 // ── アプリタブ ─────────────────────────────────
-export type SidebarTab = 'map' | 'plans' | 'records' | 'media'
+export type SidebarTab = 'map' | 'plans' | 'records' | 'media' | 'ai'
+
+// ── トースト通知 ───────────────────────────────
+export interface Toast {
+  id: string
+  message: string
+  type: 'success' | 'error' | 'warning' | 'info'
+}
 
 // ── マップ上エンティティポップアップ ────────────
 export interface MapPopupState {

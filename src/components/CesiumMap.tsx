@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import {
   Viewer, Cesium3DTileset, Cesium3DTileFeature,
   Cartesian3, Cartographic, Cartesian2,
@@ -9,7 +9,7 @@ import {
   LabelStyle, VerticalOrigin, HorizontalOrigin,
   PolylineGlowMaterialProperty, CallbackProperty,
   PolygonHierarchy, HeightReference, NearFarScalar,
-  HeadingPitchRange, defined, Matrix4,
+  HeadingPitchRange, defined, Matrix4, Transforms, SceneMode,
 } from 'cesium'
 import { useDroneStore } from '../store/droneStore'
 import { droneSimBridge } from '../sim/droneSimBridge'
@@ -91,6 +91,7 @@ function buildDroneCanvas(size = 72): HTMLCanvasElement {
 export function CesiumMap() {
   const containerRef = useRef<HTMLDivElement>(null)
   const viewerRef = useRef<Viewer | null>(null)
+  const [sceneMode, setSceneMode] = useState<'3d' | '2d' | 'columbus'>('3d')
   const tilesetRef = useRef<Cesium3DTileset | null>(null)
   const selectedFeatureRef = useRef<Cesium3DTileFeature | null>(null)
   const handlerRef = useRef<ScreenSpaceEventHandler | null>(null)
@@ -214,37 +215,19 @@ export function CesiumMap() {
       const pos = movement.position
 
       if (mode === 'select') {
-        // 既存ハイライト解除
+        // 左クリックは地図操作のみ。エンティティポップアップは右クリックで開く。
+        // 3D Tile 建物のハイライトだけ維持。
         if (selectedFeatureRef.current) {
           selectedFeatureRef.current.color = Color.WHITE.withAlpha(0.95)
           selectedFeatureRef.current = null
         }
         const picked = viewer.scene.pick(pos)
-
-        // ── ピン / ゾーン / ウェイポイントエンティティのクリック ──
+        // エンティティをクリックした場合はポップアップを閉じるだけ
         if (defined(picked) && picked.id instanceof Entity) {
-          const eid: string = (picked.id as Entity).id ?? ''
-          if (eid.startsWith('pin:')) {
-            state.setMapPopup({ type: 'pin', id: eid.slice(4), x: pos.x, y: pos.y })
-            state.setBuildingProps(null)
-            return
-          }
-          if (eid.startsWith('zone:')) {
-            state.setMapPopup({ type: 'zone', id: eid.slice(5), x: pos.x, y: pos.y })
-            state.setBuildingProps(null)
-            return
-          }
-          if (eid.startsWith('wp:')) {
-            // wp:planId:wpId 形式
-            const parts = eid.split(':')
-            const planId = parts[1], wpId = parts[2]
-            state.setMapPopup({ type: 'waypoint', id: wpId, planId, x: pos.x, y: pos.y })
-            state.setBuildingProps(null)
-            return
-          }
+          state.setMapPopup(null)
+          return
         }
-
-        // ── 3D Tile 建物クリック ──
+        // 3D Tile 建物はハイライト表示
         state.setMapPopup(null)
         if (picked instanceof Cesium3DTileFeature) {
           picked.color = Color.fromCssColorString('#58a6ff').withAlpha(0.95)
@@ -298,15 +281,14 @@ export function CesiumMap() {
         useDroneStore.getState().addDrawingPoint(lon, lat)
       } else if (mode === 'waypoint') {
         const { activePlanId, addWaypoint } = useDroneStore.getState()
-        if (activePlanId) addWaypoint(activePlanId, lon, lat)
+        // carto.height = globe.pick() で得た地盤高(MSL) をそのまま groundAlt として保存
+        if (activePlanId) addWaypoint(activePlanId, lon, lat, altM)
       }
     }, ScreenSpaceEventType.LEFT_CLICK)
 
-    // ダブルクリック:
-    //   zone モード → ゾーン確定
-    //   select モード → エンティティのポップアップ表示
+    // ダブルクリック: zone モード → ゾーン確定のみ
     handler.setInputAction((movement: { position: Cartesian2 }) => {
-      const { mapMode, drawingZonePoints, commitZone, setMapPopup } = useDroneStore.getState()
+      const { mapMode, drawingZonePoints, commitZone } = useDroneStore.getState()
       const pos = movement.position
 
       if (mapMode === 'zone') {
@@ -317,28 +299,16 @@ export function CesiumMap() {
         }
         return
       }
-
-      if (mapMode === 'select') {
-        const picked = viewer.scene.pick(pos)
-        if (defined(picked) && picked.id instanceof Entity) {
-          const eid: string = (picked.id as Entity).id ?? ''
-          if (eid.startsWith('pin:') || eid.startsWith('zone:')) {
-            const colonIdx = eid.indexOf(':')
-            const type = eid.slice(0, colonIdx) as 'pin' | 'zone'
-            const id = eid.slice(colonIdx + 1)
-            setMapPopup({ type, id, x: pos.x, y: pos.y })
-          }
-        }
-      }
+      // select モードのダブルクリックは地図ズームに任せる（何もしない）
+      void movement.position
     }, ScreenSpaceEventType.LEFT_DOUBLE_CLICK)
 
     // 右クリック:
     //   zone モード → 最後の頂点をアンドゥ
-    //   select モード + エンティティ → 削除確認
+    //   select モード + エンティティ → ポップアップ表示（編集・削除はポップアップ内で行う）
     //   その他 → ポップアップ閉じる
     handler.setInputAction((movement: { position: Cartesian2 }) => {
-      const { mapMode, drawingZonePoints, removeLastDrawingPoint, setMapMode,
-        pins, zones, plans, deletePin, deleteZone, deleteWaypoint, setMapPopup } = useDroneStore.getState()
+      const { mapMode, drawingZonePoints, removeLastDrawingPoint, setMapMode, setMapPopup } = useDroneStore.getState()
       const pos = movement.position
 
       if (mapMode === 'zone') {
@@ -352,25 +322,16 @@ export function CesiumMap() {
         if (defined(picked) && picked.id instanceof Entity) {
           const eid: string = (picked.id as Entity).id ?? ''
           if (eid.startsWith('pin:')) {
-            const id = eid.slice(4)
-            const pin = pins.find((p) => p.id === id)
-            if (pin && confirm(`「${pin.name}」を削除しますか？`)) { deletePin(id); setMapPopup(null) }
+            setMapPopup({ type: 'pin', id: eid.slice(4), x: pos.x, y: pos.y })
             return
           }
           if (eid.startsWith('zone:')) {
-            const id = eid.slice(5)
-            const zone = zones.find((z) => z.id === id)
-            if (zone && confirm(`「${zone.name}」を削除しますか？`)) { deleteZone(id); setMapPopup(null) }
+            setMapPopup({ type: 'zone', id: eid.slice(5), x: pos.x, y: pos.y })
             return
           }
           if (eid.startsWith('wp:')) {
             const parts = eid.split(':')
-            const planId = parts[1], wpId = parts[2]
-            const plan = plans.find((p) => p.id === planId)
-            const wpIdx = plan?.waypoints.findIndex((w) => w.id === wpId) ?? -1
-            if (plan && wpIdx >= 0 && confirm(`ポイント${wpIdx + 1}を削除しますか？`)) {
-              deleteWaypoint(planId, wpId); setMapPopup(null)
-            }
+            setMapPopup({ type: 'waypoint', id: parts[2], planId: parts[1], x: pos.x, y: pos.y })
             return
           }
         }
@@ -509,11 +470,10 @@ export function CesiumMap() {
       const wps = activePlan.waypoints
 
       if (wps.length >= 2) {
-        // ルートライン: AGL高度をそのまま絶対高度として描画
-        // （都市部は地盤高が海抜近く、見た目上は地上高と等価）
+        // ルートライン: groundAlt + altAGL = 実際のMSL高度で描画
         add(new Entity({
           polyline: {
-            positions: wps.map((w) => Cartesian3.fromDegrees(w.lon, w.lat, w.altAGL)),
+            positions: wps.map((w) => Cartesian3.fromDegrees(w.lon, w.lat, w.groundAlt + w.altAGL)),
             width: 3,
             clampToGround: false,
             material: new PolylineGlowMaterialProperty({
@@ -524,12 +484,13 @@ export function CesiumMap() {
         // 垂直プロファイル可視化（高度の段差が一目でわかる）
         for (let i = 0; i < wps.length - 1; i++) {
           const a = wps[i], b = wps[i + 1]
-          if (Math.abs(a.altAGL - b.altAGL) > 5) {
+          const aMsl = a.groundAlt + a.altAGL, bMsl = b.groundAlt + b.altAGL
+          if (Math.abs(aMsl - bMsl) > 5) {
             add(new Entity({
               polyline: {
                 positions: [
-                  Cartesian3.fromDegrees(b.lon, b.lat, a.altAGL),
-                  Cartesian3.fromDegrees(b.lon, b.lat, b.altAGL),
+                  Cartesian3.fromDegrees(b.lon, b.lat, aMsl),
+                  Cartesian3.fromDegrees(b.lon, b.lat, bMsl),
                 ],
                 width: 2,
                 material: Color.fromCssColorString('#7ee8a2').withAlpha(0.4),
@@ -541,11 +502,12 @@ export function CesiumMap() {
 
       wps.forEach((wp, idx) => {
         const isFirst = idx === 0, isLast = idx === wps.length - 1
+        const mslAlt = wp.groundAlt + wp.altAGL   // 実際の海抜高度(MSL)
         add(new Entity({
           // クリック検出のため wp: プレフィックスで planId:wpId を格納
           id: `wp:${activePlanId}:${wp.id}`,
           position: new ConstantPositionProperty(
-            Cartesian3.fromDegrees(wp.lon, wp.lat, wp.altAGL)
+            Cartesian3.fromDegrees(wp.lon, wp.lat, mslAlt)
           ),
           point: {
             pixelSize: isFirst || isLast ? 16 : 12,
@@ -554,25 +516,27 @@ export function CesiumMap() {
               : isLast ? Color.fromCssColorString('#f85149')
               : Color.fromCssColorString('#7ee8a2'),
             outlineColor: Color.WHITE, outlineWidth: 2,
+            heightReference: HeightReference.NONE,
             disableDepthTestDistance: Number.POSITIVE_INFINITY,
           },
           label: {
-            text: `WP${idx + 1}\n${wp.altAGL}m`,
+            text: `WP${idx + 1}\n地上${wp.altAGL}m`,
             font: '12px sans-serif',
             fillColor: Color.WHITE, outlineColor: Color.BLACK, outlineWidth: 2,
             style: LabelStyle.FILL_AND_OUTLINE,
             verticalOrigin: VerticalOrigin.BOTTOM,
             pixelOffset: { x: 0, y: -16 } as never,
             scaleByDistance: new NearFarScalar(100, 1, 6000, 0.2),
+            heightReference: HeightReference.NONE,
             disableDepthTestDistance: Number.POSITIVE_INFINITY,
           },
         }))
-        // 高度バー
+        // 高度バー（地盤高MSL から飛行高度MSL まで）
         add(new Entity({
           polyline: {
             positions: [
-              Cartesian3.fromDegrees(wp.lon, wp.lat, 0),
-              Cartesian3.fromDegrees(wp.lon, wp.lat, wp.altAGL),
+              Cartesian3.fromDegrees(wp.lon, wp.lat, wp.groundAlt),
+              Cartesian3.fromDegrees(wp.lon, wp.lat, mslAlt),
             ],
             width: 1,
             material: Color.WHITE.withAlpha(0.25),
@@ -618,6 +582,12 @@ export function CesiumMap() {
     // ─ ドローンアイコン（Canvas ビルボード）
     const iconCanvas = buildDroneCanvas(56)
 
+    // POVモード時はドローン本体を非表示（カメラがドローン視点のため）
+    const droneVisible = new CallbackProperty(
+      () => droneSimBridge.cameraMode !== 'pov',
+      false
+    )
+
     const droneEntity = viewer.entities.add(new Entity({
       position: dronePositionCB as never,
       billboard: {
@@ -625,8 +595,8 @@ export function CesiumMap() {
         width: 48, height: 48,
         verticalOrigin: VerticalOrigin.CENTER,
         disableDepthTestDistance: Number.POSITIVE_INFINITY,
-        // ローター回転アニメーション（rotation CallbackProperty）
         rotation: new CallbackProperty(() => (Date.now() / 500) % (Math.PI * 2), false) as never,
+        show: droneVisible as never,
       },
       label: {
         text: new CallbackProperty(() => {
@@ -642,6 +612,7 @@ export function CesiumMap() {
         verticalOrigin: VerticalOrigin.BOTTOM,
         pixelOffset: { x: 0, y: -40 } as never,
         disableDepthTestDistance: Number.POSITIVE_INFINITY,
+        show: droneVisible as never,
       },
       // カメラFOVコーン（地面投影楕円）
       ellipse: {
@@ -656,6 +627,7 @@ export function CesiumMap() {
         outline: true,
         outlineColor: Color.fromCssColorString('#f0c040').withAlpha(0.5),
         heightReference: HeightReference.CLAMP_TO_GROUND,
+        show: droneVisible as never,
       },
     }))
 
@@ -677,22 +649,22 @@ export function CesiumMap() {
       )
       const headingRad = CesiumMath.toRadians(droneSimBridge.heading)
 
+      // droneSimBridge.cameraMode を常に同期（show CallbackProperty が参照）
+      droneSimBridge.cameraMode = sim.cameraMode
+
       if (sim.cameraMode === 'follow') {
-        // ゲームライク追従: 進行方向後方（heading + π）から追う
-        // HeadingPitchRange の heading は「ターゲットからカメラへの方向」なので
-        // ドローン後方に置くには heading + π が必要
-        const followDist = Math.max(120, droneSimBridge.altAGL * 3.0)
-        const followPitch = droneSimBridge.altAGL < 30
-          ? CesiumMath.toRadians(-20)
-          : CesiumMath.toRadians(-30)
-        viewer.camera.lookAt(pos, new HeadingPitchRange(headingRad + Math.PI, followPitch, followDist))
+        // 追従: 後方から近距離で追う
+        const followDist = Math.max(60, droneSimBridge.altAGL * 2.0)
+        viewer.camera.lookAt(pos, new HeadingPitchRange(headingRad + Math.PI, CesiumMath.toRadians(-25), followDist))
       } else if (sim.cameraMode === 'pov') {
-        // POV: ドローン一人称視点（進行方向を向く、少し下向き）
+        // POV: ドローン視点（一人称）
+        // ECEFオフセットは無意味（日本のECEF X軸≠東方向）なので pos をそのまま使用。
+        // setView の heading/pitch がローカルENU方向を正しく解釈する。
         viewer.camera.setView({
           destination: pos,
           orientation: {
             heading: headingRad,
-            pitch: CesiumMath.toRadians(-12),
+            pitch: CesiumMath.toRadians(-20),
             roll: 0,
           },
         })
@@ -749,12 +721,87 @@ export function CesiumMap() {
     return () => window.removeEventListener('cesium:flyToCity', handler)
   }, [])
 
+  const handleResetCamera = () => {
+    const viewer = viewerRef.current
+    if (!viewer) return
+    const c = viewer.camera
+    viewer.camera.setView({
+      destination: c.position,
+      orientation: { heading: c.heading, pitch: c.pitch, roll: 0 },
+    })
+  }
+
+  const handleZoom = (dir: 'in' | 'out') => {
+    const viewer = viewerRef.current
+    if (!viewer) return
+    const amount = viewer.camera.positionCartographic.height * 0.3
+    dir === 'in' ? viewer.camera.zoomIn(amount) : viewer.camera.zoomOut(amount)
+  }
+
+  const handleSceneMode = (mode: '3d' | '2d' | 'columbus') => {
+    const viewer = viewerRef.current
+    if (!viewer) return
+    // morphTo 系は現在の視点位置を保持したままモードを切り替える
+    // duration=0.6 で自然なアニメーション遷移
+    if (mode === '3d') viewer.scene.morphTo3D(0.6)
+    else if (mode === '2d') viewer.scene.morphTo2D(0.6)
+    else viewer.scene.morphToColumbusView(0.6)
+    setSceneMode(mode)
+  }
+
   return (
     <div className="cesium-wrapper">
       <div ref={containerRef} className="cesium-container" />
       <div ref={overlayRef} className="overlay loading" style={{ display: 'flex' }}>
         <div className="spinner" />
         <p>3D都市モデルを読み込み中...</p>
+      </div>
+
+      {/* ── マップコントロールパネル ── */}
+      <div className="map-controls">
+        {/* 2D / Columbus / 3D 切り替え */}
+        <div className="map-ctrl-group">
+          <button
+            className={`map-ctrl-btn${sceneMode === '2d' ? ' active' : ''}`}
+            onClick={() => handleSceneMode('2d')}
+            title="2D平面マップ"
+          >2D</button>
+          <button
+            className={`map-ctrl-btn${sceneMode === 'columbus' ? ' active' : ''}`}
+            onClick={() => handleSceneMode('columbus')}
+            title="2.5D コロンバスビュー"
+          >2.5D</button>
+          <button
+            className={`map-ctrl-btn${sceneMode === '3d' ? ' active' : ''}`}
+            onClick={() => handleSceneMode('3d')}
+            title="3Dグローブ"
+          >3D</button>
+        </div>
+
+        <div className="map-ctrl-divider" />
+
+        {/* ズーム */}
+        <button className="map-ctrl-btn map-ctrl-icon" onClick={() => handleZoom('in')} title="ズームイン">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.2}>
+            <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+          </svg>
+        </button>
+        <button className="map-ctrl-btn map-ctrl-icon" onClick={() => handleZoom('out')} title="ズームアウト">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.2}>
+            <line x1="5" y1="12" x2="19" y2="12"/>
+          </svg>
+        </button>
+
+        <div className="map-ctrl-divider" />
+
+        {/* 傾きリセット */}
+        <button className="map-ctrl-btn map-ctrl-icon" onClick={handleResetCamera} title="画面の傾きをリセット">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+            <path d="M12 2 L12 6 M12 18 L12 22 M2 12 L6 12 M18 12 L22 12"/>
+            <circle cx="12" cy="12" r="5"/>
+            <circle cx="12" cy="12" r="1.5" fill="currentColor" stroke="none"/>
+          </svg>
+        </button>
       </div>
     </div>
   )

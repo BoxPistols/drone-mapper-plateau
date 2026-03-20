@@ -14,6 +14,7 @@ import type {
   SimState,
   Waypoint,
   MapPopupState,
+  Toast,
 } from '../types'
 
 // デフォルト都市リスト
@@ -79,9 +80,10 @@ interface DroneStore {
   addPlan: () => FlightPlan
   updatePlan: (id: string, patch: Partial<FlightPlan>) => void
   deletePlan: (id: string) => void
-  addWaypoint: (planId: string, lon: number, lat: number) => void
+  addWaypoint: (planId: string, lon: number, lat: number, groundAlt?: number) => void
   updateWaypoint: (planId: string, wpId: string, patch: Partial<Waypoint>) => void
   deleteWaypoint: (planId: string, wpId: string) => void
+  moveWaypoint: (planId: string, wpId: string, dir: 'up' | 'down') => void
 
   // 飛行記録
   records: FlightRecord[]
@@ -109,6 +111,11 @@ interface DroneStore {
   // マップポップアップ
   mapPopup: MapPopupState | null
   setMapPopup: (popup: MapPopupState | null) => void
+
+  // トースト通知
+  toasts: Toast[]
+  addToast: (message: string, type?: Toast['type']) => void
+  removeToast: (id: string) => void
 
   // サンプルデータ
   seedExampleData: () => void
@@ -190,14 +197,15 @@ export const useDroneStore = create<DroneStore>()(
           plans: s.plans.filter((p) => p.id !== id),
           activePlanId: s.activePlanId === id ? null : s.activePlanId,
         })),
-      addWaypoint: (planId, lon, lat) => {
+      addWaypoint: (planId, lon, lat, groundAlt = 0) => {
         const plan = get().plans.find((p) => p.id === planId)
         if (!plan) return
         const prev = plan.waypoints[plan.waypoints.length - 1]
         const wp: Waypoint = {
           id: uid(), lon, lat,
-          altAGL: prev?.altAGL ?? 50,   // 前WPの高度を引き継ぐ
-          speedMS: prev?.speedMS ?? 5,  // 前WPの速度を引き継ぐ
+          altAGL:    prev?.altAGL  ?? 50,  // 前WPの地上高を引き継ぐ
+          groundAlt,                        // クリック地点の地盤高(MSL)
+          speedMS:   prev?.speedMS ?? 5,
           action: 'none',
         }
         get().updatePlan(planId, { waypoints: [...plan.waypoints, wp] })
@@ -213,6 +221,17 @@ export const useDroneStore = create<DroneStore>()(
         const plan = get().plans.find((p) => p.id === planId)
         if (!plan) return
         get().updatePlan(planId, { waypoints: plan.waypoints.filter((w) => w.id !== wpId) })
+      },
+      moveWaypoint: (planId, wpId, dir) => {
+        const plan = get().plans.find((p) => p.id === planId)
+        if (!plan) return
+        const idx = plan.waypoints.findIndex((w) => w.id === wpId)
+        if (idx < 0) return
+        const newIdx = dir === 'up' ? idx - 1 : idx + 1
+        if (newIdx < 0 || newIdx >= plan.waypoints.length) return
+        const wps = [...plan.waypoints]
+        ;[wps[idx], wps[newIdx]] = [wps[newIdx], wps[idx]]
+        get().updatePlan(planId, { waypoints: wps })
       },
 
       // 飛行記録
@@ -246,7 +265,7 @@ export const useDroneStore = create<DroneStore>()(
       startSimulation: (planId) => {
         const plan = get().plans.find((p) => p.id === planId)
         if (!plan || plan.waypoints.length < 2) return
-        // 総距離から所要時間を計算
+        // 各セグメントの所要時間（飛行 + ホバー）を積算
         let totalMs = 0
         for (let i = 0; i < plan.waypoints.length - 1; i++) {
           const a = plan.waypoints[i], b = plan.waypoints[i + 1]
@@ -254,7 +273,11 @@ export const useDroneStore = create<DroneStore>()(
           const dy = (b.lat - a.lat) * 110540
           const dz = b.altAGL - a.altAGL
           const dist = Math.sqrt(dx * dx + dy * dy + dz * dz)
-          totalMs += (dist / a.speedMS) * 1000
+          totalMs += Math.max((dist / a.speedMS) * 1000, 1)
+          // ホバー停止時間（最終WP手前のみ有効）
+          if (b.action === 'hover' && b.hoverSec && i < plan.waypoints.length - 2) {
+            totalMs += b.hoverSec * 1000
+          }
         }
         // ブリッジを初期位置で初期化
         const w0 = plan.waypoints[0]
@@ -267,7 +290,7 @@ export const useDroneStore = create<DroneStore>()(
           simulation: {
             planId, playing: true, speed: 1, progress: 0,
             startedAt: Date.now(), totalMs,
-            cameraMode: 'free',
+            cameraMode: 'pov',
           },
           sidebarTab: 'plans',
           activePlanId: planId,
@@ -290,6 +313,15 @@ export const useDroneStore = create<DroneStore>()(
       // マップポップアップ
       mapPopup: null,
       setMapPopup: (popup) => set({ mapPopup: popup }),
+
+      // トースト通知
+      toasts: [],
+      addToast: (message, type = 'info') => {
+        const id = uid()
+        set((s) => ({ toasts: [...s.toasts.slice(-2), { id, message, type }] }))
+        setTimeout(() => get().removeToast(id), 4000)
+      },
+      removeToast: (id) => set((s) => ({ toasts: s.toasts.filter((t) => t.id !== id) })),
 
       // サンプルデータ（台東区ベース）
       seedExampleData: () => {
@@ -323,12 +355,12 @@ export const useDroneStore = create<DroneStore>()(
 
         const planId = uid()
         const waypoints: Waypoint[] = [
-          { id: uid(), lon: 139.7940, lat: 35.7110, altAGL: 30, speedMS: 5, action: 'none' },
-          { id: uid(), lon: 139.7980, lat: 35.7130, altAGL: 60, speedMS: 8, action: 'photo' },
-          { id: uid(), lon: 139.8020, lat: 35.7160, altAGL: 100, speedMS: 10, action: 'none' },
-          { id: uid(), lon: 139.8010, lat: 35.7195, altAGL: 80, speedMS: 8, action: 'photo' },
-          { id: uid(), lon: 139.7960, lat: 35.7180, altAGL: 50, speedMS: 5, action: 'hover', hoverSec: 10 },
-          { id: uid(), lon: 139.7940, lat: 35.7110, altAGL: 30, speedMS: 5, action: 'none' },
+          { id: uid(), lon: 139.7940, lat: 35.7110, altAGL: 30, groundAlt: 6, speedMS: 5, action: 'none' },
+          { id: uid(), lon: 139.7980, lat: 35.7130, altAGL: 60, groundAlt: 5, speedMS: 8, action: 'photo' },
+          { id: uid(), lon: 139.8020, lat: 35.7160, altAGL: 100, groundAlt: 5, speedMS: 10, action: 'none' },
+          { id: uid(), lon: 139.8010, lat: 35.7195, altAGL: 80, groundAlt: 5, speedMS: 8, action: 'photo' },
+          { id: uid(), lon: 139.7960, lat: 35.7180, altAGL: 50, groundAlt: 5, speedMS: 5, action: 'hover', hoverSec: 10 },
+          { id: uid(), lon: 139.7940, lat: 35.7110, altAGL: 30, groundAlt: 6, speedMS: 5, action: 'none' },
         ]
         const plan: FlightPlan = {
           id: planId, name: '浅草〜隅田川 試験飛行', cityId: city.id,

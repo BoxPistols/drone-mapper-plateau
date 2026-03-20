@@ -536,6 +536,63 @@ textarea { resize: vertical; }
 .cesium-wrapper { width: 100%; height: 100%; position: relative; }
 .cesium-container { width: 100%; height: 100%; }
 
+/* ── マップコントロールパネル ── */
+.map-controls {
+  position: absolute;
+  right: 12px;
+  bottom: 100px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  background: rgba(13, 17, 23, 0.85);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 10px;
+  padding: 4px;
+  z-index: 10;
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+}
+.map-ctrl-group {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.map-ctrl-divider {
+  width: 24px;
+  height: 1px;
+  background: rgba(255,255,255,0.1);
+  margin: 2px 0;
+}
+.map-ctrl-btn {
+  width: 36px;
+  height: 28px;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  color: #8b949e;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+  letter-spacing: 0.02em;
+}
+.map-ctrl-btn:hover {
+  background: rgba(88, 166, 255, 0.15);
+  color: #58a6ff;
+  border-color: rgba(88, 166, 255, 0.4);
+}
+.map-ctrl-btn.active {
+  background: rgba(88, 166, 255, 0.2);
+  color: #58a6ff;
+  border-color: rgba(88, 166, 255, 0.5);
+}
+.map-ctrl-icon { height: 32px; }
+.map-ctrl-icon svg { width: 16px; height: 16px; }
+
 /* ── オーバーレイ ── */
 .overlay {
   position: absolute;
@@ -1136,3 +1193,391 @@ textarea { resize: vertical; }
 .lod-1 { background: #dcfce7; color: #15803d; border: 1px solid #86efac; }
 .lod-2 { background: var(--accent-dim); color: var(--accent); border: 1px solid #93c5fd; }
 .lod-3 { background: #fef3c7; color: #d97706; border: 1px solid #fcd34d; }
+
+/* ── AIパネル ────────────────────────────────────────────────────────── */
+.ai-panel {
+  display: flex; flex-direction: column; height: 100%;
+  background: var(--bg-base); overflow: hidden;
+}
+
+/* ヘッダー */
+.ai-header {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 12px 16px 10px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-elevated);
+  flex-shrink: 0;
+}
+.ai-header-left { display: flex; align-items: center; gap: 8px; }
+.ai-status-dot {
+  width: 8px; height: 8px; border-radius: 50%;
+  background: #22c55e;
+  box-shadow: 0 0 6px rgba(34,197,94,0.6);
+}
+.ai-header-title { font-size: 14px; font-weight: 600; color: var(--text-primary); }
+.ai-model-badge {
+  font-size: 10px; font-weight: 600; padding: 2px 7px;
+  background: var(--accent-dim); color: var(--accent);
+  border-radius: 4px; letter-spacing: 0.03em;
+}
+.ai-clear-btn {
+  display: flex; align-items: center; justify-content: center;
+  width: 32px; height: 32px; border-radius: 8px;
+  background: transparent; border: none; cursor: pointer;
+  color: var(--text-muted); transition: all 0.15s;
+}
+.ai-clear-btn:hover { background: var(--bg-hover); color: var(--text-primary); }
+.ai-clear-btn svg { width: 16px; height: 16px; }
+
+/* メッセージエリア */
+.ai-messages {
+  flex: 1; overflow-y: auto; padding: 12px;
+  display: flex; flex-direction: column; gap: 10px;
+}
+
+/* ウェルカム */
+.ai-welcome { padding: 8px 0; }
+.ai-welcome-text {
+  font-size: 13px; color: var(--text-muted);
+  line-height: 1.6; margin-bottom: 12px;
+}
+.ai-suggestions { display: flex; flex-direction: column; gap: 6px; }
+.ai-suggestion {
+  text-align: left; padding: 10px 14px;
+  background: var(--bg-elevated); border: 1px solid var(--border);
+  border-radius: 10px; cursor: pointer;
+  font-size: 13px; color: var(--text-primary);
+  font-family: 'Noto Sans JP', sans-serif;
+  transition: all 0.15s; line-height: 1.4;
+}
+.ai-suggestion:hover { border-color: var(--accent); background: var(--accent-dim); color: var(--accent); }
+.ai-suggestion:disabled { opacity: 0.5; cursor: not-allowed; }
+
+/* メッセージバブル */
+.ai-message { display: flex; align-items: flex-start; gap: 8px; }
+.ai-message-user { flex-direction: row-reverse; }
+.ai-avatar {
+  width: 28px; height: 28px; border-radius: 8px;
+  background: var(--accent); color: #fff;
+  font-size: 11px; font-weight: 700;
+  display: flex; align-items: center; justify-content: center;
+  flex-shrink: 0;
+}
+.ai-bubble {
+  max-width: 85%; padding: 10px 13px; border-radius: 12px;
+  font-size: 13px; line-height: 1.65;
+  white-space: pre-wrap; word-break: break-word;
+}
+.ai-bubble-assistant {
+  background: var(--bg-elevated); border: 1px solid var(--border);
+  color: var(--text-primary); border-radius: 2px 12px 12px 12px;
+}
+.ai-bubble-user {
+  background: var(--accent); color: #fff;
+  border-radius: 12px 2px 12px 12px;
+}
+
+/* タイピングアニメーション */
+.ai-thinking {
+  display: flex; gap: 4px; align-items: center; padding: 2px 4px;
+}
+.ai-thinking span {
+  width: 6px; height: 6px; border-radius: 50%;
+  background: var(--text-muted); animation: aiDot 1.2s infinite;
+}
+.ai-thinking span:nth-child(2) { animation-delay: 0.2s; }
+.ai-thinking span:nth-child(3) { animation-delay: 0.4s; }
+@keyframes aiDot {
+  0%, 80%, 100% { transform: scale(0.7); opacity: 0.4; }
+  40% { transform: scale(1); opacity: 1; }
+}
+
+/* エラーバナー */
+.ai-error-banner {
+  display: flex; align-items: flex-start; gap: 8px;
+  padding: 10px 13px; border-radius: 10px;
+  background: #fef2f2; border: 1px solid #fecaca;
+  color: #b91c1c; font-size: 12px; line-height: 1.5;
+}
+.ai-error-banner svg { width: 16px; height: 16px; flex-shrink: 0; margin-top: 1px; }
+
+/* 入力エリア */
+.ai-input-area {
+  display: flex; align-items: flex-end; gap: 8px;
+  padding: 10px 12px;
+  border-top: 1px solid var(--border);
+  background: var(--bg-elevated);
+  flex-shrink: 0;
+}
+.ai-input {
+  flex: 1; padding: 10px 13px;
+  background: var(--bg-base); border: 1.5px solid var(--border);
+  border-radius: 10px; color: var(--text-primary);
+  font-size: 13px; font-family: 'Noto Sans JP', sans-serif;
+  line-height: 1.5; resize: none; outline: none;
+  transition: border-color 0.15s;
+}
+.ai-input:focus { border-color: var(--accent); }
+.ai-input::placeholder { color: var(--text-faint); }
+.ai-input:disabled { opacity: 0.6; }
+.ai-send-btn {
+  width: 40px; height: 40px; border-radius: 10px;
+  background: var(--accent); border: none; cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  color: #fff; transition: all 0.15s; flex-shrink: 0;
+}
+.ai-send-btn:hover:not(:disabled) { background: #0284c7; }
+.ai-send-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+.ai-send-btn svg { width: 18px; height: 18px; }
+.ai-spinner {
+  width: 18px; height: 18px; border-radius: 50%;
+  border: 2px solid rgba(255,255,255,0.3);
+  border-top-color: #fff;
+  animation: spin 0.7s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+.ai-hint {
+  text-align: center; font-size: 11px; color: var(--text-faint);
+  padding: 0 12px 8px; flex-shrink: 0;
+}
+
+/* セットアップガイド */
+.ai-setup-guide {
+  padding: 24px 20px; display: flex; flex-direction: column;
+  align-items: center; text-align: center; gap: 16px;
+}
+.ai-setup-icon svg {
+  width: 48px; height: 48px; color: var(--accent);
+  stroke-width: 1.2;
+}
+.ai-setup-title { font-size: 16px; font-weight: 700; color: var(--text-primary); }
+.ai-setup-desc { font-size: 13px; color: var(--text-muted); line-height: 1.6; }
+.ai-setup-steps {
+  display: flex; flex-direction: column; gap: 8px;
+  width: 100%; text-align: left;
+}
+.ai-setup-step {
+  display: flex; align-items: center; gap: 10px;
+  font-size: 13px; color: var(--text-primary);
+}
+.ai-step-num {
+  width: 24px; height: 24px; border-radius: 50%;
+  background: var(--accent); color: #fff;
+  font-size: 12px; font-weight: 700;
+  display: flex; align-items: center; justify-content: center;
+  flex-shrink: 0;
+}
+.ai-setup-code {
+  background: #1e293b; color: #e2e8f0;
+  padding: 12px 16px; border-radius: 8px;
+  font-size: 12px; font-family: monospace;
+  width: 100%; text-align: left; overflow-x: auto;
+}
+.ai-setup-note {
+  font-size: 12px; color: var(--text-faint); line-height: 1.6;
+}
+
+/* ══ トースト通知 ══════════════════════════════════════════════ */
+.toast-container {
+  position: fixed;
+  bottom: 24px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  z-index: 9999;
+  pointer-events: none;
+}
+.toast {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 16px;
+  border-radius: 10px;
+  font-size: 13px;
+  font-weight: 500;
+  min-width: 240px;
+  max-width: 420px;
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid transparent;
+  pointer-events: all;
+  animation: toast-in 0.25s ease;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.15);
+}
+@keyframes toast-in {
+  from { opacity: 0; transform: translateY(12px) scale(0.96); }
+  to   { opacity: 1; transform: translateY(0)     scale(1); }
+}
+.toast svg { width: 16px; height: 16px; flex-shrink: 0; }
+.toast span { flex: 1; }
+.toast button { background: none; border: none; cursor: pointer; padding: 2px; opacity: 0.6; }
+.toast button:hover { opacity: 1; }
+.toast button svg { width: 14px; height: 14px; }
+.toast-success { background: rgba(22,163,74,0.12); border-color: rgba(22,163,74,0.35); color: #15803d; }
+.toast-error   { background: rgba(220,38,38,0.12); border-color: rgba(220,38,38,0.35); color: #b91c1c; }
+.toast-warning { background: rgba(217,119,6,0.12); border-color: rgba(217,119,6,0.35); color: #b45309; }
+.toast-info    { background: rgba(59,130,246,0.12); border-color: rgba(59,130,246,0.35); color: #1d4ed8; }
+
+/* ══ 飛行前チェックリスト ════════════════════════════════════ */
+.checklist-overlay {
+  position: fixed; inset: 0;
+  background: rgba(0,0,0,0.5);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+  display: flex; align-items: center; justify-content: center;
+  z-index: 2000;
+}
+.checklist-modal {
+  background: #fff;
+  border-radius: 16px;
+  padding: 28px 32px;
+  width: min(520px, 92vw);
+  max-height: 90vh;
+  overflow-y: auto;
+  box-shadow: 0 20px 60px rgba(0,0,0,0.25);
+}
+.checklist-header {
+  display: flex; align-items: flex-start; gap: 14px; margin-bottom: 20px;
+}
+.checklist-header svg { width: 32px; height: 32px; color: var(--accent); flex-shrink: 0; margin-top: 2px; }
+.checklist-header h2 { margin: 0 0 4px; font-size: 18px; font-weight: 700; color: var(--text-primary); }
+.checklist-plan-name { margin: 0; font-size: 13px; color: var(--text-muted); }
+.checklist-warning {
+  display: flex; align-items: flex-start; gap: 10px;
+  background: rgba(220,38,38,0.08); border: 1px solid rgba(220,38,38,0.25);
+  border-radius: 8px; padding: 12px 14px; margin-bottom: 16px;
+  font-size: 13px; color: #b91c1c; line-height: 1.5;
+}
+.checklist-warning svg { width: 16px; height: 16px; flex-shrink: 0; margin-top: 1px; }
+.checklist-plan-stats {
+  display: flex; flex-wrap: wrap; gap: 12px;
+  background: var(--bg-base); border-radius: 8px; padding: 10px 14px;
+  font-size: 12px; color: var(--text-muted); margin-bottom: 16px;
+}
+.checklist-plan-stats b { color: var(--text-primary); }
+.checklist-plan-stats .text-warn { color: #b91c1c; }
+.checklist-items { list-style: none; padding: 0; margin: 0 0 16px; display: flex; flex-direction: column; gap: 4px; }
+.checklist-item label {
+  display: flex; align-items: center; gap: 10px;
+  padding: 10px 12px; border-radius: 8px;
+  cursor: pointer; transition: background 0.12s;
+  font-size: 14px; color: var(--text-primary);
+  border: 1.5px solid var(--border);
+}
+.checklist-item.checked label { background: rgba(22,163,74,0.06); border-color: rgba(22,163,74,0.3); }
+.checklist-item label:hover { background: var(--bg-base); }
+.checklist-item input[type="checkbox"] { display: none; }
+.checklist-check-icon svg { width: 20px; height: 20px; color: #6b7280; flex-shrink: 0; }
+.checklist-item.checked .checklist-check-icon svg { color: #16a34a; }
+.checklist-progress { display: flex; align-items: center; gap: 12px; margin-bottom: 20px; }
+.checklist-progress-bar {
+  flex: 1; height: 6px; background: var(--border); border-radius: 9999px; overflow: hidden;
+}
+.checklist-progress-fill {
+  height: 100%; background: #16a34a; border-radius: 9999px; transition: width 0.25s;
+}
+.checklist-progress span { font-size: 12px; color: var(--text-muted); white-space: nowrap; }
+.checklist-actions { display: flex; gap: 10px; }
+.checklist-cancel-btn {
+  flex: 1; padding: 10px; border: 1.5px solid var(--border); border-radius: 8px;
+  background: transparent; cursor: pointer; font-size: 14px; color: var(--text-muted);
+  transition: background 0.12s;
+}
+.checklist-cancel-btn:hover { background: var(--bg-base); }
+.checklist-confirm-btn {
+  flex: 2; padding: 10px 20px; border: none; border-radius: 8px;
+  background: var(--accent); color: #fff; cursor: pointer;
+  font-size: 14px; font-weight: 600;
+  display: flex; align-items: center; justify-content: center; gap: 8px;
+  transition: background 0.12s, opacity 0.12s;
+}
+.checklist-confirm-btn svg { width: 18px; height: 18px; }
+.checklist-confirm-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+.checklist-confirm-btn:not(:disabled):hover { background: var(--accent-hover, #0284c7); }
+
+/* ══ 飛行統計 ════════════════════════════════════════════════ */
+.plan-stats-section { background: var(--bg-base); border-radius: 10px; padding: 14px; }
+.plan-stats-grid {
+  display: grid; grid-template-columns: 1fr 1fr;
+  gap: 10px; margin-top: 8px;
+}
+.plan-stat {
+  display: flex; flex-direction: column; gap: 3px;
+  background: #fff; border-radius: 8px; padding: 10px 12px;
+  border: 1px solid var(--border);
+}
+.stat-label { font-size: 11px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.04em; }
+.stat-value { font-size: 16px; font-weight: 700; color: var(--text-primary); }
+.stat-warn  { color: #b91c1c; }
+.plan-stats-alert {
+  display: flex; align-items: flex-start; gap: 8px;
+  margin-top: 10px; padding: 10px 12px;
+  background: rgba(220,38,38,0.07); border: 1px solid rgba(220,38,38,0.2);
+  border-radius: 8px; font-size: 12px; color: #b91c1c; line-height: 1.5;
+}
+.plan-stats-alert svg { width: 14px; height: 14px; flex-shrink: 0; margin-top: 1px; }
+
+/* ══ ウェイポイント並び替え ══════════════════════════════════ */
+.wp-reorder {
+  display: flex; flex-direction: column; gap: 1px;
+  padding: 2px 2px 2px 0;
+}
+.wp-reorder-btn {
+  background: none; border: none; cursor: pointer; padding: 2px 4px;
+  color: var(--text-faint); border-radius: 4px;
+  transition: color 0.12s, background 0.12s;
+  display: flex; align-items: center;
+}
+.wp-reorder-btn svg { width: 14px; height: 14px; }
+.wp-reorder-btn:not(:disabled):hover { color: var(--accent); background: rgba(3,105,161,0.08); }
+.wp-reorder-btn:disabled { opacity: 0.2; cursor: not-allowed; }
+.wp-over-limit {
+  font-size: 10px; font-weight: 700; color: #fff; background: #dc2626;
+  padding: 1px 5px; border-radius: 4px;
+}
+.wp-alt--warn { color: #dc2626 !important; }
+.field-warning { font-size: 11px; color: #b91c1c; margin-top: 3px; }
+.label-warn { font-size: 10px; color: #b91c1c; font-weight: 600; margin-left: 4px; }
+.wp-action-badge {
+  font-size: 10px; background: rgba(3,105,161,0.1); color: var(--accent);
+  padding: 1px 6px; border-radius: 9999px; white-space: nowrap;
+}
+.item-coords {
+  display: flex; align-items: center; gap: 4px;
+  font-size: 11px; font-family: monospace; color: var(--text-faint);
+  margin-top: 6px;
+}
+.item-coords svg { width: 13px; height: 13px; }
+
+/* ══ エクスポートメニュー ════════════════════════════════════ */
+.export-menu-wrap { position: relative; }
+.export-btn {
+  background: rgba(3,105,161,0.07);
+  border: 1.5px solid rgba(3,105,161,0.2);
+  color: var(--accent);
+}
+.export-btn:hover { background: rgba(3,105,161,0.14); }
+.export-btn svg { width: 16px; height: 16px; }
+.export-menu {
+  position: absolute; bottom: calc(100% + 6px); left: 0; right: 0;
+  background: #fff; border: 1px solid var(--border); border-radius: 10px;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.12);
+  overflow: hidden; z-index: 100;
+}
+.export-menu button {
+  width: 100%; padding: 11px 14px;
+  display: flex; align-items: center; gap: 10px;
+  border: none; background: none; cursor: pointer;
+  font-size: 13px; color: var(--text-primary); text-align: left;
+  transition: background 0.1s;
+}
+.export-menu button:hover { background: var(--bg-base); }
+.export-menu button svg { width: 16px; height: 16px; color: var(--text-muted); flex-shrink: 0; }
+
+/* ══ 計画カードの追加スタイル ════════════════════════════════ */
+.plan-card-warn {
+  font-size: 10px; font-weight: 700; color: #fff; background: #dc2626;
+  padding: 1px 6px; border-radius: 4px;
+}
