@@ -42,32 +42,42 @@ function StepGuide() {
 
   if (!hasZone && pins.length === 0 && !hasPlan) return (
     <div className="step-guide">
-      <span className="step-guide-icon">👋</span>
-      <span>左の<b>「マップ」</b>タブから始めましょう。まずデモを見てみるのがおすすめです！</span>
+      <span className="step-guide-icon-svg">
+        <svg viewBox="0 0 20 20" fill="currentColor"><path d="M10 2a8 8 0 100 16A8 8 0 0010 2zm1 11H9v-2h2v2zm0-4H9V7h2v2z"/></svg>
+      </span>
+      <span>左の<b>「マップ」</b>タブから始めましょう。<b>サンプルデータを読み込む</b>とすぐ体験できます</span>
     </div>
   )
   if (!hasZone) return (
     <div className="step-guide">
-      <span className="step-guide-icon">🗺️</span>
-      <span><b>STEP 2:</b> ドローンを飛ばすエリアを地図上で囲んでみましょう</span>
+      <span className="step-guide-icon-svg">
+        <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.5"><polygon points="10,2 18,18 2,18"/></svg>
+      </span>
+      <span><b>STEP 2</b> — 「エリア描画」でドローンの飛行ゾーンを地図上に囲んでください</span>
     </div>
   )
   if (!hasPlan) return (
     <div className="step-guide">
-      <span className="step-guide-icon">📋</span>
-      <span><b>STEP 3:</b> 左の<b>「飛行計画」</b>タブで飛行ルートを作りましょう</span>
+      <span className="step-guide-icon-svg">
+        <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.5"><rect x="3" y="3" width="14" height="14" rx="2"/><line x1="7" y1="8" x2="13" y2="8"/><line x1="7" y1="11" x2="11" y2="11"/></svg>
+      </span>
+      <span><b>STEP 3</b> — 「飛行計画」タブで新しい飛行ルートを作成しましょう</span>
     </div>
   )
   if (!hasWaypoints) return (
     <div className="step-guide">
-      <span className="step-guide-icon">📍</span>
-      <span><b>STEP 4:</b> 飛行計画を開いて「地図で追加」から通過ポイントを2つ以上置きましょう</span>
+      <span className="step-guide-icon-svg">
+        <svg viewBox="0 0 20 20" fill="currentColor"><circle cx="10" cy="10" r="3"/><path d="M10 2v2M10 16v2M2 10h2M16 10h2"/></svg>
+      </span>
+      <span><b>STEP 4</b> — 計画を開いて「地図で追加」をタップ。2つ以上の通過ポイントを置いてください</span>
     </div>
   )
   return (
     <div className="step-guide step-guide--ready">
-      <span className="step-guide-icon">✅</span>
-      <span>準備完了！飛行計画の<b>「試しに飛ばしてみる」</b>ボタンでシミュレーションを開始できます</span>
+      <span className="step-guide-icon-svg">
+        <svg viewBox="0 0 20 20" fill="currentColor" style={{color:'#15803d'}}><path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z"/></svg>
+      </span>
+      <span>準備完了！飛行計画の<b>「試しに飛ばしてみる」</b>でシミュレーションを開始できます</span>
     </div>
   )
 }

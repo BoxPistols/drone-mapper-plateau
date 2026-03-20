@@ -1,4 +1,4 @@
-# PLATEAU Drone Mapper — Agent Teams
+# PLATEAU Drone Mapper — ゲームスタジオ体制
 
 ## プロジェクト概要
 
@@ -24,46 +24,79 @@ src/
   types.ts      # 共有型定義
 ```
 
-## Agent Teams — 3D特化チーム編成
+---
 
-### SimEngine（シミュレーション物理エンジン担当）
-- **担当ファイル**: `SimPlayer.tsx`, `droneSimBridge.ts`, `droneStore.ts` の startSimulation
-- **専門**: フェーズベース時間補間、ホバー制御、速度計算、進捗トラッキング
-- **原則**: セグメント等分割禁止。必ずdist/speedで実時間を計算すること
+## チーム編成 — Unity / Unreal Engine スタジオモデル
 
-### Camera3D（3Dカメラ・空間表現担当）
-- **担当ファイル**: `CesiumMap.tsx` のカメラ・エンティティ描画
-- **専門**: CesiumJS HeadingPitchRange・HeightReference・CallbackProperty
-- **原則**: POV はドローン前方オフセット + setView。follow は lookAt。free は lookAtTransform解除
+### 立体表現チーム（Visual Excellence Team）
+**役割**: 3DCG・ゲームビジュアル品質・空間表現・カメラ演出を担う
+**構成**: 3Dグラフィクスエンジニア + UI/UXデザイナー + ゲームデザイナー
+**担当ファイル**:
+- `CesiumMap.tsx` — 描画・カメラ・エンティティ
+- `SimPlayer.tsx` — HUD・カメラモードUI・ミッション演出
+- `MissionComplete.tsx` — ミッション完了シネマティック画面
+- `App.css` — ビジュアルポリッシュ全般
 
-### SimEngine + Camera3D 協調ルール
+**品質基準（KPI）**:
+- ドローンアイコン: ゲームHUD水準（グロー・レイヤード・動的）
+- POVカメラ: バンキング + ヘッディングスムーシングで映画的
+- ミッション完了: フルスクリーン演出でユーザーをワオさせる
+- 大気: fog + 空の色でシネマティックな奥行き
+
+**Camera3D 原則**:
+- POVはドローン位置 + `setView`（heading lerp + banking）
+- followは`lookAt`（後方オフセット + 高度対応距離）
+- freeは`lookAtTransform(Matrix4.IDENTITY)`でロック解除
+
+---
+
+### 企画・ビジネスチーム（Planning & Business Team）
+**役割**: 市場価値・ユーザー体験・ナラティブ・日本語コピーを担う
+**構成**: シナリオライター + プロダクトマーケター + UXリサーチャー
+**担当ファイル**:
+- `WelcomeScreen.tsx` — 初回オンボーディング
+- `HelpModal.tsx` — 使い方チュートリアル
+- `PlansPanel.tsx` — 飛行計画UX（コピー・フロー）
+- `App.tsx` の StepGuide — 状況対応ガイド
+- `PreflightChecklist.tsx` — フライト前確認フロー
+
+**品質基準（KPI）**:
+- 使い始めた瞬間「本格的なプロツール」と感じさせる
+- ミッション達成に感情的満足感（アチーブメント感）を付与
+- 空状態・エラーメッセージも前向きな日本語コピー
+- 初心者〜上級者まで迷わせない段階的ガイド
+
+---
+
+### SimEngine チーム（シミュレーション物理エンジン）
+**担当**: `SimPlayer.tsx`・`droneSimBridge.ts`・`droneStore.ts` の startSimulation
+**専門**: フェーズベース時間補間・ホバー制御・速度計算・進捗トラッキング
+**原則**: セグメント等分割禁止。必ずdist/speedで実時間を計算すること
+
+### Planner チーム（設計）
+**担当**: 新機能設計・型定義・アーキテクチャ判断・`types.ts` 変更
+**専門**: CesiumJS座標系（AGL/MSL）・HeightReference選択
+
+### UIBuilder チーム（実装）
+**担当**: パネルコンポーネント・Sidebar・App.tsx
+**原則**: `npx tsc --noEmit` でエラーゼロを確認してから完了
+
+### Reviewer チーム（レビュー）
+**担当**: `/review` スキルで差分分析
+**観点**: 型安全性・CesiumJSメモリリーク・座標系ミス（AGL/MSL混在）・アクセシビリティ
+
+---
+
+## SimEngine + Camera3D 協調ルール
 - `droneSimBridge` への書き込みは SimEngine のみ
 - `droneSimBridge` からの読み取りは Camera3D（preRender）のみ
 - `SimState` の型変更は両チーム合意が必要
 
-### Planner（設計エージェント）
-- 新機能の設計・型定義・アーキテクチャ判断
-- `types.ts` の変更を先に設計してからBuilderへ渡す
-- CesiumJS の座標系（AGL/MSL）、HeightReference の選択を担当
-
-### UIBuilder（実装エージェント）
-- コード実装（パネルコンポーネント、Sidebar、App.tsx）
-- `npx tsc --noEmit` でエラーゼロを確認してから完了
-
-### UI/UX（デザインエージェント）
-- `/ui-ux-pro-max` スキルを使用
-- App.css のスタイル改善
-- ターゲット: 初心者・高齢者・低リテラシーユーザー
-- 必須: WCAG AA準拠、最小タッチターゲット44px、最小フォント14px
-
-### Reviewer（レビューエージェント）
-- `/review` スキルで差分を分析
-- 観点: 型安全性、CesiumJS メモリリーク、座標系ミス（AGL/MSL混在）、アクセシビリティ
-
 ## Agent Team C — アプリ内AIアシスタント
-
 自然言語で飛行計画を生成するClaude統合（`src/ai/`）。
 詳細は `src/ai/tools.ts` と `src/components/panels/AIPanel.tsx` を参照。
+
+---
 
 ## 重要な設計判断
 

@@ -704,6 +704,8 @@ textarea { resize: vertical; }
 }
 @keyframes guideIn { from { opacity:0; transform:translateX(-50%) translateY(10px) } to { opacity:1; transform:translateX(-50%) translateY(0) } }
 .step-guide-icon { font-size: 20px; flex-shrink: 0; }
+.step-guide-icon-svg { width: 20px; height: 20px; flex-shrink: 0; color: var(--accent); display: flex; align-items: center; }
+.step-guide-icon-svg svg { width: 20px; height: 20px; }
 
 /* ── 建物情報パネル ── */
 .building-info {
@@ -1581,3 +1583,117 @@ textarea { resize: vertical; }
   font-size: 10px; font-weight: 700; color: #fff; background: #dc2626;
   padding: 1px 6px; border-radius: 4px;
 }
+
+/* ══ ミッション完了オーバーレイ（立体表現チーム + 企画チーム）══ */
+.mission-complete-overlay {
+  position: absolute; inset: 0;
+  background: rgba(0,0,0,0.75);
+  display: flex; align-items: center; justify-content: center;
+  z-index: 300;
+  opacity: 0; transition: opacity 0.5s ease;
+  backdrop-filter: blur(4px);
+}
+.mission-complete-overlay.visible { opacity: 1; }
+
+.mission-complete-card {
+  background: #0d1117;
+  border: 1px solid rgba(57,211,83,0.25);
+  border-radius: 20px;
+  padding: 36px 40px 32px;
+  width: 420px; max-width: calc(100vw - 40px);
+  position: relative; overflow: hidden;
+  box-shadow: 0 0 60px rgba(57,211,83,0.12), 0 24px 48px rgba(0,0,0,0.6);
+  animation: mc-slide-up 0.5s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+}
+@keyframes mc-slide-up {
+  from { transform: translateY(40px) scale(0.95); opacity: 0; }
+  to   { transform: translateY(0)    scale(1);    opacity: 1; }
+}
+
+/* 上部グリーンビーム */
+.mc-beam {
+  position: absolute; top: 0; left: 50%; transform: translateX(-50%);
+  width: 180px; height: 4px;
+  background: linear-gradient(90deg, transparent, #39d353, transparent);
+  border-radius: 0 0 8px 8px;
+  box-shadow: 0 0 20px rgba(57,211,83,0.5);
+}
+
+/* ドローンアイコンエリア */
+.mc-icon-wrap {
+  position: relative; width: 80px; height: 80px; margin: 0 auto 20px;
+}
+.mc-drone-icon {
+  width: 80px; height: 80px;
+  filter: drop-shadow(0 0 12px rgba(57,211,83,0.5));
+  animation: mc-float 3s ease-in-out infinite;
+}
+@keyframes mc-float {
+  0%, 100% { transform: translateY(0); }
+  50%       { transform: translateY(-6px); }
+}
+.mc-check {
+  position: absolute; bottom: -4px; right: -4px;
+  width: 24px; height: 24px;
+  background: #39d353; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  box-shadow: 0 0 12px rgba(57,211,83,0.6);
+  animation: mc-pop 0.4s 0.3s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+}
+@keyframes mc-pop {
+  from { transform: scale(0); } to { transform: scale(1); }
+}
+.mc-check svg { width: 14px; height: 14px; }
+
+/* テキストエリア */
+.mc-title-area { text-align: center; margin-bottom: 10px; }
+.mc-label {
+  font-size: 10px; font-weight: 700; letter-spacing: 0.15em;
+  color: #39d353; margin: 0 0 6px; text-transform: uppercase;
+}
+.mc-title {
+  font-size: 22px; font-weight: 800; color: #f0f6fc; margin: 0 0 4px;
+  line-height: 1.2;
+}
+.mc-plan-name {
+  font-size: 12px; color: rgba(240,246,252,0.5); margin: 0;
+}
+.mc-body {
+  font-size: 13px; color: rgba(240,246,252,0.65); text-align: center;
+  line-height: 1.6; margin: 0 0 24px; padding: 12px 8px;
+  border-top: 1px solid rgba(57,211,83,0.1);
+  border-bottom: 1px solid rgba(57,211,83,0.1);
+}
+
+/* スタッツグリッド */
+.mc-stats {
+  display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px;
+  margin-bottom: 24px;
+}
+.mc-stat {
+  display: flex; flex-direction: column; align-items: center; gap: 4px;
+}
+.mc-stat-value {
+  font-size: 16px; font-weight: 800; color: #7ee8a2;
+  font-variant-numeric: tabular-nums; line-height: 1;
+}
+.mc-stat-value em { font-size: 10px; font-style: normal; color: #39d353; margin-left: 1px; }
+.mc-stat-label { font-size: 10px; color: rgba(240,246,252,0.45); text-align: center; }
+
+/* アクションボタン */
+.mc-actions { display: flex; gap: 10px; }
+.mc-btn-replay {
+  flex: 1; padding: 13px; border: 1.5px solid #39d353;
+  background: rgba(57,211,83,0.12); color: #39d353;
+  border-radius: 12px; font-size: 14px; font-weight: 700; cursor: pointer;
+  display: flex; align-items: center; justify-content: center; gap: 8px;
+  transition: background 0.15s;
+}
+.mc-btn-replay:hover { background: rgba(57,211,83,0.22); }
+.mc-btn-replay svg { width: 16px; height: 16px; }
+.mc-btn-close {
+  padding: 13px 20px; border: 1.5px solid rgba(240,246,252,0.12);
+  background: rgba(240,246,252,0.05); color: rgba(240,246,252,0.6);
+  border-radius: 12px; font-size: 14px; cursor: pointer; transition: background 0.15s;
+}
+.mc-btn-close:hover { background: rgba(240,246,252,0.1); color: rgba(240,246,252,0.9); }

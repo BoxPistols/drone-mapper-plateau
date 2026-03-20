@@ -9,7 +9,7 @@ import {
   LabelStyle, VerticalOrigin, HorizontalOrigin,
   PolylineGlowMaterialProperty, CallbackProperty,
   PolygonHierarchy, HeightReference, NearFarScalar,
-  HeadingPitchRange, defined, Matrix4, Transforms, SceneMode,
+  HeadingPitchRange, defined, Matrix4,
 } from 'cesium'
 import { useDroneStore } from '../store/droneStore'
 import { droneSimBridge } from '../sim/droneSimBridge'
@@ -33,57 +33,110 @@ const ZONE_EDGE: Record<string, Color> = {
   completed:  Color.fromCssColorString('#3fb950').withAlpha(0.85),
 }
 
-// ドローンアイコンをCanvasで生成（上面図・HUDスタイル）
+// ドローンアイコンをCanvasで生成（ゲームHUD品質・立体表現チーム制作）
 function buildDroneCanvas(size = 72): HTMLCanvasElement {
   const c = document.createElement('canvas')
   c.width = size; c.height = size
   const ctx = c.getContext('2d')!
   const cx = size / 2, cy = size / 2
-  const arm = size * 0.34, r = size * 0.14
-  const col = '#39d353'      // tactical green
-  const colDim = 'rgba(57,211,83,0.25)'
-  const colGlow = 'rgba(57,211,83,0.12)'
+  const arm = size * 0.35, r = size * 0.13
 
-  // グロー（外周リング）
+  // ── カラーパレット（ゲームUI水準）──
+  const green      = '#39d353'
+  const greenBright= '#7ee8a2'
+  const greenDim   = 'rgba(57,211,83,0.2)'
+  const greenMid   = 'rgba(57,211,83,0.45)'
+
+  // レイヤー1: 最外グロー（大きな拡散光）
+  const grad1 = ctx.createRadialGradient(cx, cy, size * 0.1, cx, cy, size * 0.5)
+  grad1.addColorStop(0, 'rgba(57,211,83,0.18)')
+  grad1.addColorStop(1, 'rgba(57,211,83,0)')
+  ctx.beginPath(); ctx.arc(cx, cy, size * 0.5, 0, Math.PI * 2)
+  ctx.fillStyle = grad1; ctx.fill()
+
+  // レイヤー2: トラッキングリング（ダッシュ）
+  ctx.save()
   ctx.beginPath(); ctx.arc(cx, cy, size * 0.42, 0, Math.PI * 2)
-  ctx.strokeStyle = colGlow; ctx.lineWidth = size * 0.18; ctx.stroke()
+  ctx.strokeStyle = 'rgba(57,211,83,0.3)'; ctx.lineWidth = 1; ctx.setLineDash([4, 5])
+  ctx.stroke(); ctx.restore()
 
-  // 4本アーム
-  ctx.strokeStyle = col; ctx.lineWidth = size * 0.06; ctx.lineCap = 'round'
+  // レイヤー3: メインリング（実線）
+  ctx.beginPath(); ctx.arc(cx, cy, size * 0.42, 0, Math.PI * 2)
+  ctx.strokeStyle = 'rgba(57,211,83,0.15)'; ctx.lineWidth = size * 0.04; ctx.stroke()
+
+  // レイヤー4: アーム（グラデーション線）
   for (const a of [45, 135, 225, 315]) {
     const rad = (a * Math.PI) / 180
-    ctx.beginPath()
-    ctx.moveTo(cx + size * 0.06 * Math.cos(rad), cy + size * 0.06 * Math.sin(rad))
-    ctx.lineTo(cx + arm * Math.cos(rad), cy + arm * Math.sin(rad))
-    ctx.stroke()
+    const sx = cx + size * 0.08 * Math.cos(rad), sy = cy + size * 0.08 * Math.sin(rad)
+    const ex = cx + arm * Math.cos(rad), ey = cy + arm * Math.sin(rad)
+    const gArm = ctx.createLinearGradient(sx, sy, ex, ey)
+    gArm.addColorStop(0, green); gArm.addColorStop(1, greenDim)
+    ctx.beginPath(); ctx.moveTo(sx, sy); ctx.lineTo(ex, ey)
+    ctx.strokeStyle = gArm; ctx.lineWidth = size * 0.055; ctx.lineCap = 'round'; ctx.stroke()
+    // アームのエッジハイライト（極細白）
+    ctx.beginPath(); ctx.moveTo(sx, sy); ctx.lineTo(ex, ey)
+    ctx.strokeStyle = 'rgba(255,255,255,0.12)'; ctx.lineWidth = 1; ctx.stroke()
   }
 
-  // ローター円
+  // レイヤー5: ローター（二重リング+内部クロスブレード）
   for (const a of [45, 135, 225, 315]) {
     const rad = (a * Math.PI) / 180
     const rx = cx + arm * Math.cos(rad), ry = cy + arm * Math.sin(rad)
+
+    // ローター外周グロー
+    const gRotor = ctx.createRadialGradient(rx, ry, 0, rx, ry, r * 1.8)
+    gRotor.addColorStop(0, greenMid); gRotor.addColorStop(1, 'transparent')
+    ctx.beginPath(); ctx.arc(rx, ry, r * 1.8, 0, Math.PI * 2)
+    ctx.fillStyle = gRotor; ctx.fill()
+
+    // ローター本体
     ctx.beginPath(); ctx.arc(rx, ry, r, 0, Math.PI * 2)
-    ctx.fillStyle = colDim; ctx.fill()
-    ctx.strokeStyle = col; ctx.lineWidth = 1.5; ctx.stroke()
+    ctx.fillStyle = greenDim; ctx.fill()
+    ctx.strokeStyle = green; ctx.lineWidth = 1.5; ctx.stroke()
+
+    // ローター内部クロス（回転プロペラ感）
+    ctx.save(); ctx.translate(rx, ry)
+    ctx.strokeStyle = greenBright; ctx.lineWidth = 1; ctx.globalAlpha = 0.6
+    for (let b = 0; b < 4; b++) {
+      const br = (b * 45) * Math.PI / 180
+      ctx.beginPath(); ctx.moveTo(0, 0)
+      ctx.lineTo(r * 0.85 * Math.cos(br), r * 0.85 * Math.sin(br)); ctx.stroke()
+    }
+    ctx.restore()
+
+    // LED指示灯（小さな明るい点）
+    ctx.beginPath(); ctx.arc(rx, ry, size * 0.025, 0, Math.PI * 2)
+    ctx.fillStyle = greenBright; ctx.fill()
   }
 
-  // 中心ボディ（六角形）
+  // レイヤー6: 中心ボディ（八角形・3D感）
   ctx.beginPath()
-  for (let i = 0; i < 6; i++) {
-    const a = (i * 60 - 30) * Math.PI / 180
-    const bx = cx + size * 0.1 * Math.cos(a), by = cy + size * 0.1 * Math.sin(a)
+  for (let i = 0; i < 8; i++) {
+    const a = (i * 45) * Math.PI / 180
+    const bx = cx + size * 0.095 * Math.cos(a), by = cy + size * 0.095 * Math.sin(a)
     i === 0 ? ctx.moveTo(bx, by) : ctx.lineTo(bx, by)
   }
   ctx.closePath()
-  ctx.fillStyle = col; ctx.fill()
+  const gBody = ctx.createRadialGradient(cx - size * 0.02, cy - size * 0.02, 0, cx, cy, size * 0.1)
+  gBody.addColorStop(0, greenBright); gBody.addColorStop(1, green)
+  ctx.fillStyle = gBody; ctx.fill()
+  ctx.strokeStyle = 'rgba(255,255,255,0.3)'; ctx.lineWidth = 1; ctx.stroke()
 
-  // 機首方向インジケーター（上向き三角）
+  // レイヤー7: 中心コア（最輝点）
+  ctx.beginPath(); ctx.arc(cx, cy, size * 0.035, 0, Math.PI * 2)
+  ctx.fillStyle = '#ffffff'; ctx.fill()
+
+  // レイヤー8: 機首インジケーター（矢形 + グロー）
+  const noseY = cy - size * 0.46
+  const gNose = ctx.createLinearGradient(cx, noseY, cx, cy - size * 0.3)
+  gNose.addColorStop(0, greenBright); gNose.addColorStop(1, green)
   ctx.beginPath()
-  ctx.moveTo(cx, cy - size * 0.44)
-  ctx.lineTo(cx - size * 0.06, cy - size * 0.32)
-  ctx.lineTo(cx + size * 0.06, cy - size * 0.32)
+  ctx.moveTo(cx, noseY)
+  ctx.lineTo(cx - size * 0.065, cy - size * 0.3)
+  ctx.lineTo(cx + size * 0.065, cy - size * 0.3)
   ctx.closePath()
-  ctx.fillStyle = col; ctx.fill()
+  ctx.fillStyle = gNose; ctx.fill()
+  ctx.strokeStyle = 'rgba(255,255,255,0.25)'; ctx.lineWidth = 0.8; ctx.stroke()
 
   return c
 }
@@ -99,6 +152,8 @@ export function CesiumMap() {
   const droneEntityRef = useRef<Entity | null>(null)
   const preRenderRemoveRef = useRef<(() => void) | null>(null)
   const overlayRef = useRef<HTMLDivElement>(null)
+  const prevHeadingRef = useRef(0)         // POVバンキング計算用
+  const smoothBankRef  = useRef(0)         // バンク角のスムーシング状態
 
   const store = useDroneStore()
 
@@ -127,9 +182,19 @@ export function CesiumMap() {
       }).catch(() => {})
     }
 
+    // ── 立体表現チーム: シネマティック大気設定 ──
     viewer.shadows = false
+    // フォグ: 遠景に奥行きを付与
     viewer.scene.fog.enabled = true
-    viewer.scene.globe.maximumScreenSpaceError = 1.5 // 地形クオリティ
+    viewer.scene.fog.density = 0.00012
+    viewer.scene.fog.minimumBrightness = 0.03
+    // 大気散乱（地平線の光芒）
+    if (viewer.scene.skyAtmosphere) viewer.scene.skyAtmosphere.show = true
+    viewer.scene.globe.showGroundAtmosphere = true
+    // 地形品質: 最高精細（旧default 16 → 1.5）
+    viewer.scene.globe.maximumScreenSpaceError = 1.5
+    // アンチエイリアス（FXAA）で輪郭を滑らかに
+    viewer.scene.postProcessStages.fxaa.enabled = true
 
     viewerRef.current = viewer
     cesiumViewerRef.current = viewer
@@ -289,7 +354,7 @@ export function CesiumMap() {
     // ダブルクリック: zone モード → ゾーン確定のみ
     handler.setInputAction((movement: { position: Cartesian2 }) => {
       const { mapMode, drawingZonePoints, commitZone } = useDroneStore.getState()
-      const pos = movement.position
+      void movement.position
 
       if (mapMode === 'zone') {
         const pts = drawingZonePoints.slice(0, -2)
@@ -297,10 +362,8 @@ export function CesiumMap() {
           const name = prompt('ゾーン名を入力', 'フライトゾーン') ?? 'フライトゾーン'
           commitZone(name, 'planned', pts)
         }
-        return
       }
       // select モードのダブルクリックは地図ズームに任せる（何もしない）
-      void movement.position
     }, ScreenSpaceEventType.LEFT_DOUBLE_CLICK)
 
     // 右クリック:
@@ -653,19 +716,26 @@ export function CesiumMap() {
       droneSimBridge.cameraMode = sim.cameraMode
 
       if (sim.cameraMode === 'follow') {
-        // 追従: 後方から近距離で追う
-        const followDist = Math.max(60, droneSimBridge.altAGL * 2.0)
-        viewer.camera.lookAt(pos, new HeadingPitchRange(headingRad + Math.PI, CesiumMath.toRadians(-25), followDist))
+        // 追従: 後方から近距離で追う（高度に応じて距離を調整）
+        const followDist = Math.max(50, droneSimBridge.altAGL * 1.8)
+        viewer.camera.lookAt(pos, new HeadingPitchRange(headingRad + Math.PI, CesiumMath.toRadians(-28), followDist))
       } else if (sim.cameraMode === 'pov') {
-        // POV: ドローン視点（一人称）
-        // ECEFオフセットは無意味（日本のECEF X軸≠東方向）なので pos をそのまま使用。
-        // setView の heading/pitch がローカルENU方向を正しく解釈する。
+        // POV: ドローン視点 — バンキング付き（映画的旋回演出）
+        // heading の変化率からバンク角を算出し、指数平滑でスムーシング
+        const rawDelta = headingRad - prevHeadingRef.current
+        // -π〜+π に正規化
+        const delta = rawDelta - Math.round(rawDelta / (Math.PI * 2)) * (Math.PI * 2)
+        const targetBank = Math.max(-0.35, Math.min(0.35, delta * 8))  // ±20° 上限
+        // α=0.15 の指数平滑（急旋回でも滑らか）
+        smoothBankRef.current = smoothBankRef.current * 0.85 + targetBank * 0.15
+        prevHeadingRef.current = headingRad
+
         viewer.camera.setView({
           destination: pos,
           orientation: {
             heading: headingRad,
-            pitch: CesiumMath.toRadians(-20),
-            roll: 0,
+            pitch: CesiumMath.toRadians(-18),
+            roll: smoothBankRef.current,
           },
         })
       }

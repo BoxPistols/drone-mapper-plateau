@@ -286,6 +286,7 @@ export const useDroneStore = create<DroneStore>()(
         droneSimBridge.lat = w0.lat
         droneSimBridge.altAGL = w0.altAGL
         droneSimBridge.heading = 0
+        const wpCount = plan.waypoints.length
         set({
           simulation: {
             planId, playing: true, speed: 1, progress: 0,
@@ -296,6 +297,10 @@ export const useDroneStore = create<DroneStore>()(
           activePlanId: planId,
           mapMode: 'select',
         })
+        // 企画チーム: 発進時のアチーブメントメッセージ
+        const minSec = Math.round(totalMs / 1000 / 60)
+        const secStr = minSec > 0 ? `${minSec}分` : `${Math.round(totalMs / 1000)}秒`
+        get().addToast(`「${plan.name}」を開始 — ${wpCount}ポイント・約${secStr}のフライト`, 'success')
       },
       stopSimulation: () => {
         droneSimBridge.active = false

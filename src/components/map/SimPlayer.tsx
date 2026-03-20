@@ -1,11 +1,30 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useDroneStore } from '../../store/droneStore'
 import { droneSimBridge } from '../../sim/droneSimBridge'
+import { MissionComplete } from '../MissionComplete'
 import type { CameraMode } from '../../types'
+
+// フライト統計を計算するユーティリティ
+function calcFlightStats(wps: ReturnType<typeof useDroneStore.getState>['plans'][0]['waypoints']) {
+  let distM = 0, maxAlt = 0, photoCount = 0
+  for (let i = 0; i < wps.length; i++) {
+    if (wps[i].altAGL > maxAlt) maxAlt = wps[i].altAGL
+    if (wps[i].action === 'photo') photoCount++
+    if (i > 0) {
+      const a = wps[i - 1], b = wps[i]
+      const dx = (b.lon - a.lon) * 111320 * Math.cos((a.lat * Math.PI) / 180)
+      const dy = (b.lat - a.lat) * 110540
+      const dz = b.altAGL - a.altAGL
+      distM += Math.sqrt(dx * dx + dy * dy + dz * dz)
+    }
+  }
+  return { distM, maxAlt, photoCount }
+}
 
 export function SimPlayer() {
   const { simulation, setSimulation, stopSimulation, plans } = useDroneStore()
   const rafRef = useRef<number | null>(null)
+  const [missionDone, setMissionDone] = useState(false)
 
   // ── Space キー: 再生 / 一時停止 ──
   useEffect(() => {
@@ -115,6 +134,7 @@ export function SimPlayer() {
       if (progress >= 1.0) {
         droneSimBridge.active = false
         useDroneStore.getState().setSimulation({ playing: false, progress: 1.0 })
+        setMissionDone(true)  // ミッション完了演出を表示
         return
       }
       rafRef.current = requestAnimationFrame(tick)
@@ -157,6 +177,7 @@ export function SimPlayer() {
           droneSimBridge.lon = wps[0].lon; droneSimBridge.lat = wps[0].lat
           droneSimBridge.altAGL = wps[0].altAGL; droneSimBridge.active = true
         }
+        setMissionDone(false)
         setSimulation({ playing: true, progress: 0, startedAt: Date.now() })
         return
       }
@@ -222,7 +243,31 @@ export function SimPlayer() {
       droneSimBridge.lon = wps[0].lon; droneSimBridge.lat = wps[0].lat
       droneSimBridge.altAGL = wps[0].altAGL; droneSimBridge.active = true
     }
+    setMissionDone(false)
     setSimulation({ progress: 0, playing: false, startedAt: Date.now() })
+  }
+
+  // ── ミッション完了演出 ──────────────────────────
+  if (missionDone && plan) {
+    const { distM, maxAlt: statMaxAlt, photoCount } = calcFlightStats(wps)
+    return (
+      <MissionComplete
+        plan={plan}
+        distM={distM}
+        totalSec={simulation.totalMs / simulation.speed / 1000}
+        maxAlt={statMaxAlt}
+        photoCount={photoCount}
+        onReplay={() => {
+          if (wps[0]) {
+            droneSimBridge.lon = wps[0].lon; droneSimBridge.lat = wps[0].lat
+            droneSimBridge.altAGL = wps[0].altAGL; droneSimBridge.active = true
+          }
+          setMissionDone(false)
+          setSimulation({ playing: true, progress: 0, startedAt: Date.now() })
+        }}
+        onClose={stopSimulation}
+      />
+    )
   }
 
   return (
