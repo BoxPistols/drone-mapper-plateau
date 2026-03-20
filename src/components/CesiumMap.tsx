@@ -826,12 +826,30 @@ export function CesiumMap() {
   const handleSceneMode = (mode: '3d' | '2d' | 'columbus') => {
     const viewer = viewerRef.current
     if (!viewer) return
-    // morphTo 系は現在の視点位置を保持したままモードを切り替える
-    // duration=0.6 で自然なアニメーション遷移
+
+    // morphTo 完了後にCesiumがカメラを地球全体にリセットするのを防ぐため、
+    // モーフ前にカメラ位置・向きを保存し、morphComplete で即座に復元する
+    const carto = viewer.camera.positionCartographic
+    const lon     = CesiumMath.toDegrees(carto.longitude)
+    const lat     = CesiumMath.toDegrees(carto.latitude)
+    const height  = carto.height
+    const heading = viewer.camera.heading
+    const pitch   = viewer.camera.pitch
+
     if (mode === '3d') viewer.scene.morphTo3D(0.6)
     else if (mode === '2d') viewer.scene.morphTo2D(0.6)
     else viewer.scene.morphToColumbusView(0.6)
     setSceneMode(mode)
+
+    // morphComplete はモーフアニメーション完了時に1回だけ発火
+    const remove = viewer.scene.morphComplete.addEventListener(() => {
+      remove()
+      viewer.camera.flyTo({
+        destination: Cartesian3.fromDegrees(lon, lat, height),
+        orientation: { heading, pitch, roll: 0 },
+        duration: 0, // 追加アニメーションなし（既にmorphアニメーション済み）
+      })
+    })
   }
 
   return (
