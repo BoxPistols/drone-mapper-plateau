@@ -1700,3 +1700,157 @@ textarea { resize: vertical; }
   border-radius: 12px; font-size: 14px; cursor: pointer; transition: background 0.15s;
 }
 .mc-btn-close:hover { background: rgba(240,246,252,0.1); color: rgba(240,246,252,0.9); }
+
+/* ══ ダークモード ════════════════════════════════════════════ */
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg-base:      #0d1117;
+    --bg-panel:     #161b22;
+    --bg-surface:   #161b22;
+    --bg-elevated:  #21262d;
+    --bg-hover:     #1c2128;
+    --border:       #30363d;
+    --border-hover: #6e7681;
+    --accent:       #58a6ff;
+    --accent-dim:   rgba(88,166,255,0.12);
+    --accent-glow:  rgba(88,166,255,0.15);
+    --text-primary: #e6edf3;
+    --text-muted:   #8b949e;
+    --text-faint:   #484f58;
+  }
+
+  /* フォーム要素 */
+  input, select, textarea {
+    background: var(--bg-elevated);
+    color: var(--text-primary);
+  }
+  .search-input:focus { background: var(--bg-elevated); }
+
+  /* ヘッダー */
+  .app-header {
+    box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+  }
+
+  /* サイドバー */
+  .sidebar {
+    box-shadow: 2px 0 8px rgba(0,0,0,0.2);
+  }
+
+  /* マップツールバー */
+  .map-toolbar {
+    background: rgba(22,27,34,0.96);
+    border-color: var(--border);
+    box-shadow: 0 4px 24px rgba(0,0,0,0.4);
+  }
+  .toolbar-btn:hover { background: var(--bg-elevated); }
+
+  /* ステップガイドバナー */
+  .step-guide {
+    background: rgba(22,27,34,0.97);
+    border-color: var(--border);
+    box-shadow: 0 4px 24px rgba(0,0,0,0.4);
+  }
+  .step-guide--action {
+    border-color: var(--accent);
+    background: rgba(88,166,255,0.1);
+    color: #79c0ff;
+  }
+  .step-guide--ready {
+    border-color: #2ea043;
+    background: rgba(46,160,67,0.1);
+    color: #56d364;
+  }
+
+  /* 建物情報パネル */
+  .building-info {
+    background: rgba(22,27,34,0.97);
+    box-shadow: 0 8px 32px rgba(0,0,0,0.5);
+  }
+  .building-info-header {
+    background: var(--accent-dim);
+    border-color: var(--border);
+  }
+
+  /* オーバーレイ */
+  .overlay {
+    background: rgba(22,27,34,0.94);
+    border-color: var(--border);
+  }
+
+  /* HUDバー */
+  .sim-hud {
+    background: rgba(22,27,34,0.96);
+    border-color: #2ea043;
+    box-shadow: 0 2px 16px rgba(46,160,67,0.15), 0 4px 20px rgba(0,0,0,0.4);
+  }
+  .hud-title {
+    background: rgba(46,160,67,0.12);
+    border-color: #2ea043;
+  }
+  .hud-title span, .hud-title svg { color: #56d364; }
+  .hud-cam-btn.active { background: rgba(46,160,67,0.15); border-color: #2ea043; color: #56d364; }
+
+  /* コントロールバー */
+  .sim-player {
+    background: rgba(22,27,34,0.97);
+    border-color: #2ea043;
+    box-shadow: 0 4px 24px rgba(0,0,0,0.4);
+  }
+  .sim-speed-btn.active, .sim-speed-btn:hover {
+    background: rgba(46,160,67,0.15); border-color: #2ea043; color: #56d364;
+  }
+
+  /* 検索結果 */
+  .search-results {
+    background: var(--bg-panel);
+    border-color: var(--border);
+    box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+  }
+
+  /* マップポップアップ */
+  .map-popup {
+    background: var(--bg-panel);
+    box-shadow: 0 8px 32px rgba(0,0,0,0.5);
+  }
+  .map-popup-header { background: var(--bg-elevated); }
+  .map-popup-footer { background: var(--bg-elevated); }
+
+  /* モーダル共通 */
+  .modal-panel { background: var(--bg-panel); }
+
+  /* ウェルカム画面 */
+  .welcome-panel {
+    background: var(--bg-panel);
+    box-shadow: 0 32px 80px rgba(0,0,0,0.6);
+  }
+
+  /* チェックリスト */
+  .checklist-modal {
+    background: var(--bg-panel);
+    box-shadow: 0 20px 60px rgba(0,0,0,0.6);
+  }
+
+  /* エクスポートメニュー */
+  .export-menu {
+    background: var(--bg-panel);
+    border-color: var(--border);
+    box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+  }
+  .export-menu button:hover { background: var(--bg-elevated); }
+
+  /* 飛行統計カード */
+  .plan-stat { background: var(--bg-elevated); }
+
+  /* ステータスバッジ（ダーク調整） */
+  .status-draft { background: var(--bg-elevated); color: var(--text-muted); border-color: var(--border); }
+
+  /* シミュレーション中インジケーター */
+  .sim-indicator { background: rgba(46,160,67,0.12); border-color: #2ea043; color: #56d364; }
+  .sim-indicator-dot { background: #56d364; }
+
+  /* トースト（ダーク調整） */
+  .toast-success { background: rgba(46,160,67,0.15); border-color: rgba(46,160,67,0.4); color: #56d364; }
+  .toast-error   { background: rgba(220,38,38,0.15);  border-color: rgba(220,38,38,0.4);  color: #f87171; }
+  .toast-warning { background: rgba(217,119,6,0.15);  border-color: rgba(217,119,6,0.4);  color: #fbbf24; }
+  .toast-info    { background: rgba(88,166,255,0.15); border-color: rgba(88,166,255,0.4); color: #79c0ff; }
+}
