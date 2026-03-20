@@ -108,7 +108,9 @@ export function SimPlayer() {
             droneSimBridge.lon     = a.lon    + (b.lon    - a.lon)    * frac
             droneSimBridge.lat     = a.lat    + (b.lat    - a.lat)    * frac
             droneSimBridge.altAGL  = a.altAGL + (b.altAGL - a.altAGL) * frac
-            droneSimBridge.heading = Math.atan2(b.lon - a.lon, b.lat - a.lat) * (180 / Math.PI)
+            // WP間の飛行方向: atan2(Δlon, Δlat) で北基準の方位角を算出し 180° 反転
+            // Cesiumのheadingは「カメラが向く方向」なので、飛行方向そのものに合わせる
+            droneSimBridge.heading = (Math.atan2(b.lon - a.lon, b.lat - a.lat) * (180 / Math.PI) + 180) % 360
           } else {
             // ホバー: 対象WPで停止、heading は維持
             const wp = wps[phase.wpIdx]
