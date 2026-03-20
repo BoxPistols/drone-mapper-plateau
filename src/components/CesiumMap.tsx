@@ -696,6 +696,16 @@ export function CesiumMap() {
 
     droneEntityRef.current = droneEntity
 
+    // ─ シミュレーション開始直後: 初期ヘディングでカメラを即座に配置
+    // （最初のRAFティックまでの数フレームで誤方向を向かないようにする）
+    prevHeadingRef.current = CesiumMath.toRadians(droneSimBridge.heading)
+    smoothBankRef.current = 0
+    const initPos = Cartesian3.fromDegrees(droneSimBridge.lon, droneSimBridge.lat, droneSimBridge.altAGL + 2)
+    viewer.camera.setView({
+      destination: initPos,
+      orientation: { heading: CesiumMath.toRadians(droneSimBridge.heading), pitch: CesiumMath.toRadians(-18), roll: 0 },
+    })
+
     // ─ カメラ追従 + 地盤高更新（preRender で毎フレーム実行）
     const removeCameraListener = viewer.scene.preRender.addEventListener(() => {
       const sim = useDroneStore.getState().simulation
@@ -712,8 +722,13 @@ export function CesiumMap() {
       )
       const headingRad = CesiumMath.toRadians(droneSimBridge.heading)
 
-      // droneSimBridge.cameraMode を常に同期（show CallbackProperty が参照）
+      // カメラモード切替検知: POV 入場時にバンキング状態をリセット
+      const prevMode = droneSimBridge.cameraMode
       droneSimBridge.cameraMode = sim.cameraMode
+      if (sim.cameraMode === 'pov' && prevMode !== 'pov') {
+        prevHeadingRef.current = headingRad
+        smoothBankRef.current = 0
+      }
 
       if (sim.cameraMode === 'follow') {
         // 追従: 後方から近距離で追う（高度に応じて距離を調整）
