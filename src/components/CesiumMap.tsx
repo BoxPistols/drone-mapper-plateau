@@ -9,7 +9,7 @@ import {
   LabelStyle, VerticalOrigin, HorizontalOrigin,
   PolylineGlowMaterialProperty, CallbackProperty,
   PolygonHierarchy, HeightReference, NearFarScalar,
-  HeadingPitchRange, defined, Matrix4,
+  defined, Matrix4,
 } from 'cesium'
 import { useDroneStore } from '../store/droneStore'
 import { droneSimBridge } from '../sim/droneSimBridge'
@@ -731,9 +731,26 @@ export function CesiumMap() {
       }
 
       if (sim.cameraMode === 'follow') {
-        // 追従: 後方から近距離で追う（高度に応じて距離を調整）
-        const followDist = Math.max(50, droneSimBridge.altAGL * 1.8)
-        viewer.camera.lookAt(pos, new HeadingPitchRange(headingRad + Math.PI, CesiumMath.toRadians(-28), followDist))
+        // 追跡: ドローンの真後ろにカメラを置き、前方（進行方向）を向く
+        // lookAt + HeadingPitchRange は挙動が不安定なため setView で直接計算する
+        //
+        // sin(heading) = 東方向成分, cos(heading) = 北方向成分
+        // カメラをドローンの「後方」に置く = 進行方向と逆方向にオフセット
+        const followDist = Math.max(40, droneSimBridge.altAGL * 1.5)
+        const sinH = Math.sin(headingRad)
+        const cosH = Math.cos(headingRad)
+        // ドローン位置から 後方 followDist メートルの座標を計算
+        const camLon = droneSimBridge.lon - sinH * followDist / 111320
+        const camLat = droneSimBridge.lat - cosH * followDist / 110540
+        const camAlt = droneSimBridge.groundAlt + droneSimBridge.altAGL + Math.max(15, followDist * 0.35)
+        viewer.camera.setView({
+          destination: Cartesian3.fromDegrees(camLon, camLat, camAlt),
+          orientation: {
+            heading: headingRad,              // 進行方向を向く
+            pitch: CesiumMath.toRadians(-18), // 少し前下がりでドローンを捉える
+            roll: 0,
+          },
+        })
       } else if (sim.cameraMode === 'pov') {
         // POV: ドローン視点 — バンキング付き（映画的旋回演出）
         // heading の変化率からバンク角を算出し、指数平滑でスムーシング
