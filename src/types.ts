@@ -96,7 +96,7 @@ export interface FlightRecord {
 }
 
 // ── 撮影データ ─────────────────────────────────
-export type MediaType = 'photo' | 'video'
+export type MediaType = 'photo' | 'video' | 'panorama' | 'model3d'
 
 export interface MediaItem {
   id: string
@@ -111,6 +111,9 @@ export interface MediaItem {
   sizeKB?: number
   notes?: string
   dataUrl?: string // thumbnail base64
+  duration?: number // 動画の長さ（秒）
+  modelUrl?: string // 3Dモデル参照用
+  videoUrl?: string // HTML5 video 再生用URL
 }
 
 // ── シミュレーション ────────────────────────────

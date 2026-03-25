@@ -274,10 +274,20 @@ export function CesiumMap() {
     const handler = new ScreenSpaceEventHandler(viewer.canvas)
     handlerRef.current = handler
 
+    // ダブルクリック防止（waypointモード用、300ms以内の連続クリックを無視）
+    let lastClickTime = 0
+
     handler.setInputAction((movement: { position: Cartesian2 }) => {
       const state = useDroneStore.getState()
       const mode = state.mapMode
       const pos = movement.position
+
+      // ダブルクリック防止
+      if (mode === 'waypoint') {
+        const now = Date.now()
+        if (now - lastClickTime < 300) return
+        lastClickTime = now
+      }
 
       if (mode === 'select') {
         // 左クリックは地図操作のみ。エンティティポップアップは右クリックで開く。
@@ -345,9 +355,12 @@ export function CesiumMap() {
       } else if (mode === 'zone') {
         useDroneStore.getState().addDrawingPoint(lon, lat)
       } else if (mode === 'waypoint') {
-        const { activePlanId, addWaypoint } = useDroneStore.getState()
-        // carto.height = globe.pick() で得た地盤高(MSL) をそのまま groundAlt として保存
-        if (activePlanId) addWaypoint(activePlanId, lon, lat, altM)
+        const { activePlanId, addWaypoint, addToast } = useDroneStore.getState()
+        if (!activePlanId) {
+          addToast('飛行計画を選択してから地図をクリックしてください', 'warning')
+          return
+        }
+        addWaypoint(activePlanId, lon, lat, altM)
       }
     }, ScreenSpaceEventType.LEFT_CLICK)
 

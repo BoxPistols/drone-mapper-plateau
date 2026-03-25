@@ -22,7 +22,7 @@ export function LocationSearch({ onSelect }: Props) {
     setLoading(true)
     try {
       const url = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(q)}&format=json&countrycodes=jp&limit=6&accept-language=ja`
-      const res = await fetch(url, { headers: { 'Accept-Language': 'ja' } })
+      const res = await fetch(url, { headers: { 'Accept-Language': 'ja', 'User-Agent': 'DroneMapper/1.0 (demo)' } })
       const data: GeoResult[] = await res.json()
       setResults(data)
       setOpen(true)

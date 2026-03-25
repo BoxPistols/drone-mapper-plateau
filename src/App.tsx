@@ -7,6 +7,7 @@ import { MapToolbar } from './components/map/MapToolbar'
 import { SimPlayer } from './components/map/SimPlayer'
 import { HelpModal } from './components/HelpModal'
 import { MapEntityPopup } from './components/map/MapEntityPopup'
+import { MediaViewer } from './components/MediaViewer'
 import { WelcomeScreen, shouldShowWelcome } from './components/WelcomeScreen'
 import { useDroneStore } from './store/droneStore'
 import './App.css'
@@ -77,7 +78,7 @@ function StepGuide() {
       <span className="step-guide-icon-svg">
         <svg viewBox="0 0 20 20" fill="currentColor" style={{color:'#15803d'}}><path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z"/></svg>
       </span>
-      <span>準備完了！飛行計画の<b>「試しに飛ばしてみる」</b>でシミュレーションを開始できます</span>
+      <span>準備完了！飛行計画を開いて<b>「飛行シミュレーション」</b>ボタンで飛ばせます</span>
     </div>
   )
 }
@@ -124,8 +125,13 @@ function App() {
         <div className="header-left">
           <div className="app-logo">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5}>
-              <path strokeLinecap="round" strokeLinejoin="round"
-                d="M12 2L8 6H3l2.5 7.5L3 18h5l4 4 4-4h5l-2.5-4.5L19 6h-5l-3.5-4zM12 8v8M8 12h8"/>
+              <circle cx="12" cy="11" r="2.5"/>
+              <path strokeLinecap="round" d="M12 8.5V6M12 16v-2.5M14.5 11H17M7 11h2.5"/>
+              <path strokeLinecap="round" d="M8 7l1.5 1.5M14.5 14.5L16 16M16 7l-1.5 1.5M9.5 14.5L8 16"/>
+              <circle cx="8" cy="7" r="1" fill="currentColor"/>
+              <circle cx="16" cy="7" r="1" fill="currentColor"/>
+              <circle cx="8" cy="16" r="1" fill="currentColor"/>
+              <circle cx="16" cy="16" r="1" fill="currentColor"/>
             </svg>
           </div>
           <div className="header-title-wrap">
@@ -165,6 +171,21 @@ function App() {
             </svg>
             <span className="header-help-btn-text">使い方</span>
           </button>
+          <button
+            className="header-reset-btn"
+            title="データをリセット"
+            onClick={() => {
+              if (confirm('すべてのデータをリセットしますか？\n（ピン・ゾーン・飛行計画・記録・撮影データが削除されます）')) {
+                localStorage.removeItem('drone-store')
+                sessionStorage.clear()
+                location.reload()
+              }
+            }}
+          >
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} style={{width:18,height:18}}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
+            </svg>
+          </button>
         </div>
       </header>
 
@@ -183,6 +204,7 @@ function App() {
           )}
           {simulation && <SimPlayer />}
           <MapEntityPopup />
+          <MediaViewer />
           <StepGuide />
         </div>
       </div>

@@ -1,15 +1,33 @@
 /**
- * AIチャット用 React Hook
- * Anthropic SDK + tool use でドローンストアを自然言語で操作する
+ * AIチャット用 React Hook — マルチモデル対応
  *
- * ⚠️ セキュリティ注意: VITE_ANTHROPIC_API_KEY はクライアントバンドルに含まれる。
- *    本番環境では server-side proxy（Vite dev proxy 等）を経由すること。
+ * 無料枠: gpt-5.4-nano / Gemini 2.5 Flash（アプリ側キー）
+ * 有料枠: gpt-5.4-mini（ユーザー自身のOpenAI APIキー）
  */
 import { useState, useCallback, useRef } from 'react'
-import Anthropic from '@anthropic-ai/sdk'
+import OpenAI from 'openai'
 import { AI_TOOLS, executeTool } from './tools'
 
-const MODEL = 'claude-opus-4-6'
+// ── モデル定義 ──
+export type AIProvider = 'openai' | 'gemini'
+export type ModelTier = 'free' | 'premium'
+
+export interface AIModel {
+  id: string
+  label: string
+  provider: AIProvider
+  tier: ModelTier
+}
+
+export const AI_MODELS: AIModel[] = [
+  { id: 'gpt-5.4-nano',      label: 'GPT-5.4 nano',      provider: 'openai', tier: 'free' },
+  { id: 'gemini-2.5-flash',  label: 'Gemini 2.5 Flash',  provider: 'gemini', tier: 'free' },
+  { id: 'gpt-5.4-mini',      label: 'GPT-5.4 mini',      provider: 'openai', tier: 'premium' },
+]
+
+export const DEFAULT_MODEL = AI_MODELS[0] // gpt-5.4-nano
+
+const GEMINI_BASE_URL = 'https://generativelanguage.googleapis.com/v1beta/openai/'
 
 const SYSTEM_PROMPT = `あなたは日本の3D都市モデル（PLATEAU）を使ったドローン飛行計画アプリのAIアシスタントです。
 
@@ -34,112 +52,141 @@ export interface ChatMessage {
   isThinking?: boolean
 }
 
-export function useAIChat() {
+// ── クライアント生成 ──
+function createClient(model: AIModel, userApiKey: string | null): OpenAI {
+  if (model.tier === 'premium') {
+    if (!userApiKey) throw new Error('このモデルには APIキーの入力が必要です')
+    return new OpenAI({ apiKey: userApiKey, dangerouslyAllowBrowser: true })
+  }
+
+  // 無料枠
+  if (model.provider === 'gemini') {
+    const key = import.meta.env.VITE_GEMINI_API_KEY
+    if (!key) throw new Error('VITE_GEMINI_API_KEY が未設定です')
+    return new OpenAI({ apiKey: key, baseURL: GEMINI_BASE_URL, dangerouslyAllowBrowser: true })
+  }
+
+  // OpenAI 無料枠
+  const key = import.meta.env.VITE_OPENAI_API_KEY
+  if (!key) throw new Error('VITE_OPENAI_API_KEY が未設定です')
+  return new OpenAI({ apiKey: key, dangerouslyAllowBrowser: true })
+}
+
+// ── Hook ──
+export function useAIChat(model: AIModel, userApiKey: string | null) {
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const clientRef = useRef<Anthropic | null>(null)
-  const historyRef = useRef<Anthropic.MessageParam[]>([])
-
-  // Anthropic クライアントを遅延初期化（API キーが必要な時だけ）
-  const getClient = useCallback(() => {
-    if (!clientRef.current) {
-      const apiKey = import.meta.env.VITE_ANTHROPIC_API_KEY
-      if (!apiKey) throw new Error('VITE_ANTHROPIC_API_KEY が設定されていません')
-      clientRef.current = new Anthropic({
-        apiKey,
-        dangerouslyAllowBrowser: true, // クライアントサイド使用を明示
-      })
-    }
-    return clientRef.current
-  }, [])
+  const historyRef = useRef<OpenAI.ChatCompletionMessageParam[]>([])
 
   const sendMessage = useCallback(async (userInput: string) => {
     if (loading) return
     setError(null)
     setLoading(true)
 
-    // UIにユーザーメッセージを追加
     setMessages((prev) => [...prev, { role: 'user', content: userInput }])
-
-    // Anthropic API 用の履歴にも追加
     historyRef.current = [...historyRef.current, { role: 'user', content: userInput }]
-
-    // ストリーミング用の assistant メッセージプレースホルダー
     setMessages((prev) => [...prev, { role: 'assistant', content: '', isThinking: true }])
 
     try {
-      const client = getClient()
+      const client = createClient(model, userApiKey)
 
-      // tool-use ループ（Claude がツールを使い終わるまで繰り返す）
       let assistantText = ''
       let continueLoop = true
 
       while (continueLoop) {
-        const stream = await client.messages.stream({
-          model: MODEL,
+        const stream = await client.chat.completions.create({
+          model: model.id,
           max_tokens: 4096,
-          system: SYSTEM_PROMPT,
+          messages: [
+            { role: 'system', content: SYSTEM_PROMPT },
+            ...historyRef.current,
+          ],
           tools: AI_TOOLS,
-          tool_choice: { type: 'auto' },
-          messages: historyRef.current,
+          tool_choice: 'auto',
+          stream: true,
         })
 
-        // テキストをストリーミング表示
-        stream.on('text', (delta) => {
-          assistantText += delta
-          setMessages((prev) => {
-            const next = [...prev]
-            next[next.length - 1] = { role: 'assistant', content: assistantText, isThinking: false }
-            return next
-          })
-        })
+        const accToolCalls: Map<number, { id: string; name: string; arguments: string }> = new Map()
+        let finishReason: string | null = null
 
-        const message = await stream.finalMessage()
+        for await (const chunk of stream) {
+          const choice = chunk.choices[0]
+          if (!choice) continue
 
-        // アシスタントメッセージを履歴に追加
-        historyRef.current = [...historyRef.current, { role: 'assistant', content: message.content }]
+          const contentDelta = choice.delta?.content
+          if (contentDelta) {
+            assistantText += contentDelta
+            setMessages((prev) => {
+              const next = [...prev]
+              next[next.length - 1] = { role: 'assistant', content: assistantText, isThinking: false }
+              return next
+            })
+          }
 
-        if (message.stop_reason === 'end_turn' || message.stop_reason !== 'tool_use') {
+          const toolCallDeltas = choice.delta?.tool_calls
+          if (toolCallDeltas) {
+            for (const tc of toolCallDeltas) {
+              const existing = accToolCalls.get(tc.index)
+              if (existing) {
+                if (tc.function?.arguments) existing.arguments += tc.function.arguments
+              } else {
+                accToolCalls.set(tc.index, {
+                  id: tc.id ?? '',
+                  name: tc.function?.name ?? '',
+                  arguments: tc.function?.arguments ?? '',
+                })
+              }
+            }
+          }
+
+          if (choice.finish_reason) finishReason = choice.finish_reason
+        }
+
+        const assistantMessage: OpenAI.ChatCompletionMessageParam = {
+          role: 'assistant',
+          content: assistantText || null,
+        }
+        const toolCallsList = Array.from(accToolCalls.values())
+        if (toolCallsList.length > 0) {
+          (assistantMessage as OpenAI.ChatCompletionAssistantMessageParam).tool_calls = toolCallsList.map((tc) => ({
+            id: tc.id,
+            type: 'function' as const,
+            function: { name: tc.name, arguments: tc.arguments },
+          }))
+        }
+        historyRef.current = [...historyRef.current, assistantMessage]
+
+        if (finishReason !== 'tool_calls' || toolCallsList.length === 0) {
           continueLoop = false
           break
         }
 
-        // ── ツールコール処理 ────────────────────
-        const toolUseBlocks = message.content.filter(
-          (b): b is Anthropic.ToolUseBlock => b.type === 'tool_use'
-        )
-
-        const toolResults: Anthropic.ToolResultBlockParam[] = []
-        for (const toolUse of toolUseBlocks) {
-          const result = executeTool(toolUse.name, toolUse.input as Record<string, unknown>)
-          toolResults.push({
-            type: 'tool_result',
-            tool_use_id: toolUse.id,
-            content: result,
-          })
+        for (const toolCall of toolCallsList) {
+          let parsedArgs: Record<string, unknown> = {}
+          try { parsedArgs = JSON.parse(toolCall.arguments) } catch { /* empty */ }
+          const result = executeTool(toolCall.name, parsedArgs)
+          historyRef.current = [
+            ...historyRef.current,
+            { role: 'tool', tool_call_id: toolCall.id, content: result },
+          ]
         }
-
-        // ツール結果を履歴に追加してループ継続
-        historyRef.current = [...historyRef.current, { role: 'user', content: toolResults }]
-
-        // 次のストリームに備えてテキストをリセット
         assistantText = ''
       }
     } catch (err) {
-      const msg = err instanceof Anthropic.APIError
+      const msg = err instanceof OpenAI.APIError
         ? `API エラー (${err.status}): ${err.message}`
         : err instanceof Error ? err.message : '不明なエラー'
       setError(msg)
       setMessages((prev) => {
         const next = [...prev]
-        next[next.length - 1] = { role: 'assistant', content: `⚠️ ${msg}`, isThinking: false }
+        next[next.length - 1] = { role: 'assistant', content: msg, isThinking: false }
         return next
       })
     } finally {
       setLoading(false)
     }
-  }, [loading, getClient])
+  }, [loading, model, userApiKey])
 
   const clearHistory = useCallback(() => {
     setMessages([])

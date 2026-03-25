@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useDroneStore } from '../../store/droneStore'
 import { PreflightChecklist } from '../PreflightChecklist'
+import { useNominatimSearch } from '../../hooks/useNominatimSearch'
 import type { FlightPlan, Waypoint, WaypointAction, PlanStatus } from '../../types'
 
 const STATUS_LABELS: Record<PlanStatus, string> = {
@@ -15,6 +16,14 @@ const ACTION_LABELS: Record<WaypointAction, string> = {
   video_start: '動画撮影を開始',
   video_stop:  '動画撮影を停止',
   hover:       'その場で停止',
+}
+
+const ACTION_BADGES: Record<WaypointAction, string> = {
+  none:        '',
+  photo:       '📷',
+  video_start: '🎬',
+  video_stop:  '⏹',
+  hover:       '⏸',
 }
 
 // ── 飛行統計の計算 ────────────────────────────
@@ -102,84 +111,135 @@ function WaypointRow({
   onUpdate: (p: Partial<Waypoint>) => void
   onDelete: () => void
 }) {
-  const { moveWaypoint } = useDroneStore()
+  const { moveWaypoint, addToast } = useDroneStore()
   const [open, setOpen] = useState(false)
+  const [editField, setEditField] = useState<'lat' | 'lon' | null>(null)
+  const [editValue, setEditValue] = useState('')
   const overLimit = wp.altAGL > 150
+
+  const startEdit = (field: 'lat' | 'lon') => {
+    setEditField(field)
+    setEditValue(field === 'lat' ? wp.lat.toFixed(6) : wp.lon.toFixed(6))
+  }
+  const saveEdit = () => {
+    if (!editField) return
+    const v = parseFloat(editValue)
+    if (!isNaN(v)) {
+      if (editField === 'lat' && v >= -90 && v <= 90) onUpdate({ lat: v })
+      else if (editField === 'lon' && v >= -180 && v <= 180) onUpdate({ lon: v })
+    }
+    setEditField(null)
+  }
+  const handleEditKey = (e: React.KeyboardEvent) => {
+    if (e.nativeEvent.isComposing) return
+    if (e.key === 'Enter') saveEdit()
+    else if (e.key === 'Escape') setEditField(null)
+  }
 
   const flyToWp = () =>
     window.dispatchEvent(new CustomEvent('cesium:flyTo', { detail: { lat: wp.lat, lon: wp.lon } }))
 
-  return (
-    <li className="item-row wp-row">
-      {/* 並び替え */}
-      <div className="wp-reorder">
-        <button
-          className="wp-reorder-btn"
-          disabled={idx === 0}
-          onClick={() => moveWaypoint(planId, wp.id, 'up')}
-          title="上に移動"
-        >
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.2}>
-            <path strokeLinecap="round" d="M5 15l7-7 7 7"/>
-          </svg>
-        </button>
-        <button
-          className="wp-reorder-btn"
-          disabled={idx === total - 1}
-          onClick={() => moveWaypoint(planId, wp.id, 'down')}
-          title="下に移動"
-        >
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.2}>
-            <path strokeLinecap="round" d="M19 9l-7 7-7-7"/>
-          </svg>
-        </button>
-      </div>
+  const mslAlt = wp.groundAlt + wp.altAGL
 
-      <button className="item-expand" onClick={() => setOpen(!open)}>
-        <span
-          className="wp-num"
-          onClick={(e) => { e.stopPropagation(); flyToWp() }}
-          title="地図で見る"
-        >
+  return (
+    <li className={`wp-row ${open ? 'wp-row--open' : ''}`}>
+      {/* 行1: 番号 + 飛行パラメータ + アクション */}
+      <div className="wp-main">
+        <span className="wp-num" onClick={flyToWp} title="クリックで地図移動">
           {idx + 1}
         </span>
-        <span className="item-name">ポイント {idx + 1}</span>
-        {overLimit && (
-          <span className="wp-over-limit" title="150m制限超過">150m超</span>
-        )}
-        <span className={`wp-alt ${overLimit ? 'wp-alt--warn' : ''}`}>{wp.altAGL}m</span>
-        <span className="wp-speed">{wp.speedMS}m/s</span>
-        {wp.action !== 'none' && (
-          <span className="wp-action-badge">{ACTION_LABELS[wp.action]}</span>
-        )}
-      </button>
-      <button className="item-delete" onClick={onDelete} title="このポイントを削除">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
-          <path strokeLinecap="round" d="M6 18L18 6M6 6l12 12"/>
-        </svg>
-      </button>
 
+        <div className="wp-info" onClick={() => setOpen(!open)}>
+          {/* 上段: 飛行パラメータ */}
+          <div className="wp-params">
+            <span className={`wp-alt ${overLimit ? 'wp-alt--warn' : ''}`} title={`地上高 ${wp.altAGL}m / 海抜 ${mslAlt.toFixed(0)}m`}>
+              {wp.altAGL}m
+            </span>
+            <span className="wp-sep">/</span>
+            <span className="wp-speed">{wp.speedMS}m/s</span>
+            {overLimit && <span className="wp-over-limit" title="150m制限超過">!</span>}
+            {wp.action !== 'none' && (
+              <span className="wp-action-badge" title={ACTION_LABELS[wp.action]}>{ACTION_BADGES[wp.action]}</span>
+            )}
+            {wp.groundAlt > 0 && (
+              <span className="wp-ground-alt" title={`地盤高 ${wp.groundAlt.toFixed(1)}m MSL`}>
+                GL{wp.groundAlt.toFixed(0)}m
+              </span>
+            )}
+          </div>
+
+          {/* 下段: 座標（ダブルクリックで編集） */}
+          <div className="wp-coords">
+            {editField === 'lat' ? (
+              <input className="wp-coord-edit" value={editValue} onChange={(e) => setEditValue(e.target.value)}
+                onKeyDown={handleEditKey} onBlur={saveEdit} autoFocus onClick={(e) => e.stopPropagation()} />
+            ) : (
+              <span className="wp-coord" onDoubleClick={(e) => { e.stopPropagation(); startEdit('lat') }} title="ダブルクリックで緯度を編集">
+                {wp.lat.toFixed(6)}
+              </span>
+            )}
+            <span className="wp-coord-sep">,</span>
+            {editField === 'lon' ? (
+              <input className="wp-coord-edit" value={editValue} onChange={(e) => setEditValue(e.target.value)}
+                onKeyDown={handleEditKey} onBlur={saveEdit} autoFocus onClick={(e) => e.stopPropagation()} />
+            ) : (
+              <span className="wp-coord" onDoubleClick={(e) => { e.stopPropagation(); startEdit('lon') }} title="ダブルクリックで経度を編集">
+                {wp.lon.toFixed(6)}
+              </span>
+            )}
+            <button className="wp-copy-btn" onClick={(e) => {
+              e.stopPropagation()
+              navigator.clipboard.writeText(`${wp.lat.toFixed(6)}, ${wp.lon.toFixed(6)}`)
+              addToast('座標をコピーしました', 'info')
+            }} title="座標をコピー">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} width={11} height={11}>
+                <rect x="9" y="9" width="13" height="13" rx="2" /><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1" />
+              </svg>
+            </button>
+          </div>
+        </div>
+
+        {/* 展開シェブロン */}
+        <svg className="wp-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} onClick={() => setOpen(!open)}>
+          <path strokeLinecap="round" d="M19 9l-7 7-7-7"/>
+        </svg>
+
+        {/* 並べ替え + 削除 (ホバーで表示) */}
+        <div className="wp-actions">
+          <button className="wp-act-btn" disabled={idx === 0} onClick={() => moveWaypoint(planId, wp.id, 'up')} title="上に移動">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" d="M5 15l7-7 7 7"/></svg>
+          </button>
+          <button className="wp-act-btn" disabled={idx === total - 1} onClick={() => moveWaypoint(planId, wp.id, 'down')} title="下に移動">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" d="M19 9l-7 7-7-7"/></svg>
+          </button>
+          <button className="wp-act-btn wp-act-del" onClick={onDelete} title="削除">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" d="M6 18L18 6M6 6l12 12"/></svg>
+          </button>
+        </div>
+      </div>
+
+      {/* 展開: 編集フォーム */}
       {open && (
-        <div className="item-detail wp-detail">
+        <div className="wp-detail">
           <div className="wp-detail-grid">
-            <label>地上からの高さ
+            <label>高度
               <div className="input-unit">
                 <input type="number" min={10} max={300} value={wp.altAGL}
                   onChange={(e) => onUpdate({ altAGL: Number(e.target.value) })} />
                 <span>m</span>
               </div>
               {wp.altAGL > 150 && (
-                <span className="field-warning">航空法150m制限を超えています</span>
+                <span className="field-warning">150m制限超過</span>
               )}
             </label>
-            <label>飛ぶ速さ
+            <label>速度
               <div className="input-unit">
                 <input type="number" min={1} max={20} value={wp.speedMS}
                   onChange={(e) => onUpdate({ speedMS: Number(e.target.value) })} />
                 <span>m/s</span>
               </div>
             </label>
-            <label>このポイントでの動作
+            <label>動作
               <select value={wp.action}
                 onChange={(e) => onUpdate({ action: e.target.value as WaypointAction })}>
                 {Object.entries(ACTION_LABELS).map(([v, l]) => (
@@ -188,7 +248,7 @@ function WaypointRow({
               </select>
             </label>
             {wp.action === 'hover' && (
-              <label>停止する時間
+              <label>停止時間
                 <div className="input-unit">
                   <input type="number" min={1} value={wp.hoverSec ?? 5}
                     onChange={(e) => onUpdate({ hoverSec: Number(e.target.value) })} />
@@ -196,13 +256,6 @@ function WaypointRow({
                 </div>
               </label>
             )}
-          </div>
-          <div className="item-coords">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5}>
-              <path strokeLinecap="round" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"/>
-              <path strokeLinecap="round" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"/>
-            </svg>
-            {wp.lat.toFixed(5)}, {wp.lon.toFixed(5)}
           </div>
         </div>
       )}
@@ -220,12 +273,49 @@ function PlanDetail({ plan, onBack }: PlanDetailProps) {
   const {
     updatePlan, deletePlan, addRecord,
     mapMode, setMapMode, setActivePlanId, activePlanId,
-    updateWaypoint, deleteWaypoint, startSimulation,
+    addWaypoint, updateWaypoint, deleteWaypoint, startSimulation,
     setSidebarTab, simulation, addToast,
+    zones, generateWaypointsFromZone,
   } = useDroneStore()
 
   const [showChecklist, setShowChecklist] = useState(false)
   const [showExportMenu, setShowExportMenu] = useState(false)
+  const [showWpSearch, setShowWpSearch] = useState(false)
+  const nominatim = useNominatimSearch()
+  const [showZoneGen, setShowZoneGen] = useState(false)
+  const [zoneGenOpts, setZoneGenOpts] = useState({
+    zoneId: '',
+    mode: 'perimeter' as 'perimeter' | 'grid',
+    spacingM: 50,
+    altAGL: 50,
+    speedMS: 5,
+  })
+  const [fetchingElevation, setFetchingElevation] = useState(false)
+  const [elevProgress, setElevProgress] = useState({ current: 0, total: 0 })
+
+  const handleFetchElevations = async () => {
+    const total = plan.waypoints.length
+    setFetchingElevation(true)
+    setElevProgress({ current: 0, total })
+    let updated = 0
+    for (let i = 0; i < total; i++) {
+      const wp = plan.waypoints[i]
+      setElevProgress({ current: i + 1, total })
+      try {
+        const res = await fetch(
+          `https://cyberjapandata2.gsi.go.jp/general/dem/scripts/getelevation.php?lon=${wp.lon}&lat=${wp.lat}&outtype=JSON`
+        )
+        const data = await res.json()
+        if (data.elevation !== '-----' && typeof data.elevation === 'number') {
+          updateWaypoint(plan.id, wp.id, { groundAlt: data.elevation })
+          updated++
+        }
+      } catch { /* skip */ }
+      await new Promise((r) => setTimeout(r, 200))
+    }
+    setFetchingElevation(false)
+    addToast(`${updated}/${total} ポイントの標高を取得しました`, 'success')
+  }
 
   const isActive = activePlanId === plan.id
   const isSimulating = simulation?.planId === plan.id
@@ -364,15 +454,122 @@ function PlanDetail({ plan, onBack }: PlanDetailProps) {
                 setMapMode(mapMode === 'waypoint' && isActive ? 'select' : 'waypoint')
               }}
             >
-              {isActive && mapMode === 'waypoint' ? '完了' : '+ 地図で追加'}
+              {isActive && mapMode === 'waypoint' ? '完了' : '+ 地図'}
             </button>
           </div>
+          <div className="wp-toolbar">
+            <button className={`wp-tool-btn ${showWpSearch ? 'active' : ''}`} onClick={() => { setShowWpSearch(!showWpSearch); setShowZoneGen(false) }} title="場所を検索してWP追加">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} width={14} height={14}><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+              検索
+            </button>
+            {zones.length > 0 && (
+              <button className={`wp-tool-btn ${showZoneGen ? 'active' : ''}`} onClick={() => { setShowZoneGen(!showZoneGen); setShowWpSearch(false) }} title="ゾーンからWP自動生成">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} width={14} height={14}><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 3v18"/></svg>
+                ゾーン
+              </button>
+            )}
+            <button
+              className="wp-tool-btn"
+              disabled={fetchingElevation || plan.waypoints.length === 0}
+              onClick={handleFetchElevations}
+              title="国土地理院APIで標高を一括取得"
+            >
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} width={14} height={14}><path d="M8 3v2m8-2v2M3 8h2m14 0h2M7 14l3-3 2 2 4-4"/></svg>
+              {fetchingElevation ? `${elevProgress.current}/${elevProgress.total}` : '標高'}
+            </button>
+          </div>
+          {/* 標高取得プログレスバー */}
+          {fetchingElevation && (
+            <div className="wp-elev-progress">
+              <div className="wp-elev-progress-bar" style={{ width: `${(elevProgress.current / elevProgress.total) * 100}%` }} />
+            </div>
+          )}
+
+          {/* Phase 2: 地名検索→WP追加 */}
+          {showWpSearch && (
+            <div className="wp-search-panel">
+              <input
+                className="wp-search-input"
+                value={nominatim.query}
+                onChange={(e) => nominatim.handleChange(e.target.value)}
+                placeholder="地名・建物名で検索..."
+                autoFocus
+              />
+              {nominatim.loading && <div className="wp-search-loading">検索中...</div>}
+              {nominatim.results.length > 0 && (
+                <ul className="wp-search-results">
+                  {nominatim.results.map((r, i) => (
+                    <li key={i}>
+                      <span className="wp-search-name">{r.display_name.split(',')[0]}</span>
+                      <span className="wp-search-detail">{r.display_name.split(',').slice(1, 3).join(',')}</span>
+                      <button
+                        className="wp-search-add-btn"
+                        onClick={() => {
+                          addWaypoint(plan.id, parseFloat(r.lon), parseFloat(r.lat))
+                          addToast(`${r.display_name.split(',')[0]} をWPに追加`, 'success')
+                          window.dispatchEvent(new CustomEvent('cesium:flyTo', {
+                            detail: { lat: parseFloat(r.lat), lon: parseFloat(r.lon) }
+                          }))
+                          nominatim.clear()
+                          setShowWpSearch(false)
+                        }}
+                      >
+                        + WP追加
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          )}
+
+          {/* Phase 3: ゾーンからWP生成 */}
+          {showZoneGen && (
+            <div className="zone-gen-panel">
+              <label>ゾーン
+                <select value={zoneGenOpts.zoneId} onChange={(e) => setZoneGenOpts({...zoneGenOpts, zoneId: e.target.value})}>
+                  <option value="">選択...</option>
+                  {zones.map((z) => <option key={z.id} value={z.id}>{z.name}</option>)}
+                </select>
+              </label>
+              <label>モード
+                <select value={zoneGenOpts.mode} onChange={(e) => setZoneGenOpts({...zoneGenOpts, mode: e.target.value as 'perimeter' | 'grid'})}>
+                  <option value="perimeter">外周</option>
+                  <option value="grid">グリッド</option>
+                </select>
+              </label>
+              <label>間隔 (m)
+                <input type="number" min={10} max={500} value={zoneGenOpts.spacingM} onChange={(e) => setZoneGenOpts({...zoneGenOpts, spacingM: Number(e.target.value)})} />
+              </label>
+              <label>高度 (m)
+                <input type="number" min={1} max={150} value={zoneGenOpts.altAGL} onChange={(e) => setZoneGenOpts({...zoneGenOpts, altAGL: Number(e.target.value)})} />
+              </label>
+              <label>速度 (m/s)
+                <input type="number" min={1} max={20} value={zoneGenOpts.speedMS} onChange={(e) => setZoneGenOpts({...zoneGenOpts, speedMS: Number(e.target.value)})} />
+              </label>
+              <button
+                className="action-btn primary"
+                disabled={!zoneGenOpts.zoneId}
+                onClick={() => {
+                  generateWaypointsFromZone(plan.id, zoneGenOpts.zoneId, zoneGenOpts)
+                  setShowZoneGen(false)
+                }}
+              >
+                WP生成
+              </button>
+            </div>
+          )}
+
           {plan.waypoints.length === 0 ? (
             <div className="panel-empty-guided">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} style={{width:36,height:36,color:'var(--accent)'}}>
                 <path strokeLinecap="round" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0zM15 11a3 3 0 11-6 0 3 3 0 016 0z"/>
               </svg>
-              <p>「地図で追加」ボタンを押してから<br />地図上をクリックすると<br />通過ポイントが追加されます</p>
+              {isActive && mapMode === 'waypoint' ? (
+                <p>地図上をクリックして<br />通過ポイントを追加してください</p>
+              ) : (
+                <p>上の「+ 地図」ボタンを押してから<br />地図上をクリックすると<br />通過ポイントが追加されます</p>
+              )}
             </div>
           ) : (
             <ul className="item-list wp-list">
@@ -405,9 +602,7 @@ function PlanDetail({ plan, onBack }: PlanDetailProps) {
             <svg viewBox="0 0 24 24" fill="currentColor">
               <path d="M8 5v14l11-7z"/>
             </svg>
-            {plan.waypoints.length < 2
-              ? 'ポイントを2つ以上追加してください'
-              : '飛行シミュレーション'}
+            {plan.waypoints.length < 2 ? '2ポイント以上必要' : 'シミュレーション'}
           </button>
 
           <button
@@ -417,7 +612,7 @@ function PlanDetail({ plan, onBack }: PlanDetailProps) {
               if (!isActive) setMapMode('waypoint')
             }}
           >
-            {isActive ? '編集を終わる' : '通過ポイントを編集'}
+            {isActive ? '編集終了' : 'ポイント編集'}
           </button>
 
           <button
@@ -431,7 +626,7 @@ function PlanDetail({ plan, onBack }: PlanDetailProps) {
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
               <path strokeLinecap="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
             </svg>
-            飛行記録をつける
+            飛行記録
           </button>
 
           {/* エクスポートメニュー */}

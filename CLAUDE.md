@@ -3,19 +3,19 @@
 ## プロジェクト概要
 
 国交省 PLATEAU 3D都市モデルを使ったドローン飛行計画・管理アプリ。
-Vite + React 19 + TypeScript + CesiumJS + Zustand + Anthropic SDK
+Vite + React 19 + TypeScript + CesiumJS + Zustand + OpenAI SDK
 
 ## 技術スタック
 - フロントエンド: React 19, TypeScript 5.9, Vite 8
 - 3D描画: CesiumJS 1.139 (PLATEAU 3D Tiles)
 - 状態管理: Zustand (persist)
-- AI: @anthropic-ai/sdk (claude-opus-4-6)
+- AI: openai (gpt-4.1-mini)
 - スタイル: カスタムCSS（ライトテーマ、WCAG AA準拠）
 
 ## ディレクトリ構成
 ```
 src/
-  ai/           # AI アシスタント（Claude API）
+  ai/           # AI アシスタント（OpenAI API）
   components/
     map/        # 地図上UI（MapEntityPopup, MapToolbar, SimPlayer）
     panels/     # サイドバーパネル
@@ -93,7 +93,7 @@ src/
 - `SimState` の型変更は両チーム合意が必要
 
 ## Agent Team C — アプリ内AIアシスタント
-自然言語で飛行計画を生成するClaude統合（`src/ai/`）。
+自然言語で飛行計画を生成するOpenAI統合（`src/ai/`）。
 詳細は `src/ai/tools.ts` と `src/components/panels/AIPanel.tsx` を参照。
 
 ---
@@ -111,4 +111,34 @@ src/
 - ドローンエンティティは `droneSimBridge` 経由で60fps更新（React state非経由）
 
 ### AIアシスタントのセキュリティ
-`VITE_ANTHROPIC_API_KEY` はデモ用途。本番では server-side proxy に変更すること。
+`VITE_OPENAI_API_KEY` はデモ用途。本番では server-side proxy に変更すること。
+<!-- claude-memory-sync: auto-generated -->
+
+## グローバル設計方針
+
+# グローバル設計方針
+
+## コンポーネント設計
+- 単一責任。1コンポーネント1責務
+- Props は必ず型定義。any 禁止
+- 副作用は hooks に分離する
+
+## 命名規則
+- コンポーネント: PascalCase
+- hooks: use プレフィックス
+- 定数: UPPER_SNAKE_CASE
+
+## Claude への指示スタイル
+- 差分だけ返す。ファイル全体を返さない
+- 変更理由を1行コメントで添える
+- 選択肢がある場合は推奨を1つ明示してから提示する
+
+## 禁止パターン
+- any の使用
+- console.log の commit
+- ハードコードされた文字列（i18n対象はすべて定数化）
+
+---
+<!-- このファイルは claude-memory-sync が管理します -->
+<!-- 自由に編集してください。cm コマンドで同期されます -->
+

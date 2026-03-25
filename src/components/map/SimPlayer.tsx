@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState } from 'react'
 import { useDroneStore } from '../../store/droneStore'
 import { droneSimBridge } from '../../sim/droneSimBridge'
+import { catmullRom, catmullRomTangent, mirrorPoint } from '../../sim/spline'
 import { MissionComplete } from '../MissionComplete'
-import type { CameraMode } from '../../types'
+import type { CameraMode, Waypoint } from '../../types'
 
 // フライト統計を計算するユーティリティ
 function calcFlightStats(wps: ReturnType<typeof useDroneStore.getState>['plans'][0]['waypoints']) {
@@ -19,6 +20,20 @@ function calcFlightStats(wps: ReturnType<typeof useDroneStore.getState>['plans']
     }
   }
   return { distM, maxAlt, photoCount }
+}
+
+// スプライン補間でドローン位置・heading を更新する共通関数
+function interpolateSpline(wps: Waypoint[], segIdx: number, frac: number) {
+  const p0 = segIdx > 0 ? wps[segIdx - 1] : mirrorPoint(wps[segIdx], wps[segIdx + 1])
+  const p1 = wps[segIdx]
+  const p2 = wps[segIdx + 1]
+  const p3 = segIdx + 2 < wps.length ? wps[segIdx + 2] : mirrorPoint(wps[segIdx + 1], wps[segIdx])
+  const pt = catmullRom(p0, p1, p2, p3, frac)
+  const tangent = catmullRomTangent(p0, p1, p2, p3, frac)
+  droneSimBridge.lon = pt.lon
+  droneSimBridge.lat = pt.lat
+  droneSimBridge.altAGL = pt.altAGL
+  droneSimBridge.heading = Math.atan2(tangent.lon, tangent.lat) * (180 / Math.PI)
 }
 
 export function SimPlayer() {
@@ -104,13 +119,7 @@ export function SimPlayer() {
         if (elapsed < cumMs + phase.durationMs) {
           const frac = Math.min((elapsed - cumMs) / phase.durationMs, 1)
           if (phase.type === 'fly') {
-            const a = wps[phase.segIdx], b = wps[phase.segIdx + 1]
-            droneSimBridge.lon     = a.lon    + (b.lon    - a.lon)    * frac
-            droneSimBridge.lat     = a.lat    + (b.lat    - a.lat)    * frac
-            droneSimBridge.altAGL  = a.altAGL + (b.altAGL - a.altAGL) * frac
-            // WP間の飛行方向: atan2(Δlon, Δlat) で北基準の方位角を算出
-            // atan2(y=Δlon, x=Δlat) → 北=0°, 東=90° のCesium heading と一致する
-            droneSimBridge.heading = Math.atan2(b.lon - a.lon, b.lat - a.lat) * (180 / Math.PI)
+            interpolateSpline(wps, phase.segIdx, frac)
           } else {
             // ホバー: 対象WPで停止、heading は維持
             const wp = wps[phase.wpIdx]
@@ -222,10 +231,7 @@ export function SimPlayer() {
       if (targetElapsed < cumMs + phase.durationMs) {
         const frac = Math.min((targetElapsed - cumMs) / phase.durationMs, 1)
         if (phase.type === 'fly') {
-          const a = wps[phase.segIdx], b = wps[phase.segIdx + 1]
-          droneSimBridge.lon    = a.lon    + (b.lon    - a.lon)    * frac
-          droneSimBridge.lat    = a.lat    + (b.lat    - a.lat)    * frac
-          droneSimBridge.altAGL = a.altAGL + (b.altAGL - a.altAGL) * frac
+          interpolateSpline(wps, phase.segIdx, frac)
         } else {
           const wp = wps[phase.wpIdx]
           droneSimBridge.lon    = wp.lon

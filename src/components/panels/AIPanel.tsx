@@ -1,5 +1,13 @@
 import { useState, useRef, useEffect } from 'react'
-import { useAIChat } from '../../ai/useAIChat'
+import { useAIChat, AI_MODELS, DEFAULT_MODEL, type AIModel } from '../../ai/useAIChat'
+
+const LS_KEY_MODEL = 'drone-ai-model'
+const SS_KEY_APIKEY = 'drone-ai-user-key' // sessionStorage（タブ閉じで消える）
+
+function loadModel(): AIModel {
+  const saved = localStorage.getItem(LS_KEY_MODEL)
+  return AI_MODELS.find((m) => m.id === saved) ?? DEFAULT_MODEL
+}
 
 const SUGGESTIONS = [
   '台東区の浅草上空を巡回する飛行計画を作って',
@@ -10,17 +18,33 @@ const SUGGESTIONS = [
 ]
 
 export function AIPanel() {
-  const { messages, loading, error, sendMessage, clearHistory } = useAIChat()
+  const [selectedModel, setSelectedModel] = useState<AIModel>(loadModel)
+  const [userApiKey, setUserApiKey] = useState<string>(sessionStorage.getItem(SS_KEY_APIKEY) ?? '')
+  const [showSettings, setShowSettings] = useState(false)
+
+  const { messages, loading, error, sendMessage, clearHistory } = useAIChat(
+    selectedModel,
+    userApiKey || null,
+  )
   const [input, setInput] = useState('')
   const messagesEndRef = useRef<HTMLDivElement>(null)
-  const inputRef = useRef<HTMLTextAreaElement>(null)
 
-  const hasApiKey = !!import.meta.env.VITE_ANTHROPIC_API_KEY
-
-  // 新メッセージで自動スクロール
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages])
+
+  const handleModelChange = (id: string) => {
+    const m = AI_MODELS.find((x) => x.id === id)
+    if (!m) return
+    setSelectedModel(m)
+    localStorage.setItem(LS_KEY_MODEL, m.id)
+  }
+
+  const handleKeyChange = (val: string) => {
+    setUserApiKey(val)
+    if (val) sessionStorage.setItem(SS_KEY_APIKEY, val)
+    else sessionStorage.removeItem(SS_KEY_APIKEY)
+  }
 
   const handleSend = () => {
     const text = input.trim()
@@ -36,59 +60,99 @@ export function AIPanel() {
     }
   }
 
-  // API キー未設定の場合
-  if (!hasApiKey) {
-    return (
-      <div className="ai-panel">
-        <div className="ai-setup-guide">
-          <div className="ai-setup-icon">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5}>
-              <path strokeLinecap="round" strokeLinejoin="round"
-                d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09z"/>
-              <path strokeLinecap="round" strokeLinejoin="round"
-                d="M18.259 8.715L18 9.75l-.259-1.035a3.375 3.375 0 00-2.455-2.456L14.25 6l1.036-.259a3.375 3.375 0 002.455-2.456L18 2.25l.259 1.035a3.375 3.375 0 002.456 2.456L21.75 6l-1.035.259a3.375 3.375 0 00-2.456 2.456z"/>
-            </svg>
-          </div>
-          <h3 className="ai-setup-title">AI アシスタントの設定</h3>
-          <p className="ai-setup-desc">
-            自然言語で飛行計画を作成するには Anthropic API キーが必要です。
-          </p>
-          <div className="ai-setup-steps">
-            <div className="ai-setup-step">
-              <span className="ai-step-num">1</span>
-              <span>プロジェクトルートに <code>.env.local</code> を作成</span>
-            </div>
-            <div className="ai-setup-step">
-              <span className="ai-step-num">2</span>
-              <span>以下を記入して保存</span>
-            </div>
-          </div>
-          <pre className="ai-setup-code">VITE_ANTHROPIC_API_KEY=sk-ant-...</pre>
-          <p className="ai-setup-note">
-            ⚠️ これはデモ用設定です。<br/>
-            本番環境ではサーバーサイドproxy経由にしてください。
-          </p>
-        </div>
-      </div>
-    )
-  }
+  // API キーの有無チェック（無料モデルはアプリキーがあればOK）
+  const hasAppKey = selectedModel.provider === 'gemini'
+    ? !!import.meta.env.VITE_GEMINI_API_KEY
+    : !!import.meta.env.VITE_OPENAI_API_KEY
+  const isPremium = selectedModel.tier === 'premium'
+  const canUse = isPremium ? !!userApiKey : hasAppKey
 
   return (
     <div className="ai-panel">
       {/* ヘッダー */}
       <div className="ai-header">
         <div className="ai-header-left">
-          <div className="ai-status-dot" />
+          <div className="ai-status-dot" style={canUse ? undefined : { background: '#94a3b8' }} />
           <span className="ai-header-title">AI アシスタント</span>
-          <span className="ai-model-badge">Opus 4.6</span>
         </div>
-        {messages.length > 0 && (
-          <button className="ai-clear-btn" onClick={clearHistory} title="会話をリセット">
+        <div className="ai-header-actions">
+          <button
+            className={`ai-settings-btn ${showSettings ? 'active' : ''}`}
+            onClick={() => setShowSettings(!showSettings)}
+            title="モデル設定"
+          >
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
               <path strokeLinecap="round" strokeLinejoin="round"
-                d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182m0-4.991v4.99"/>
+                d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.066 2.573c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.573 1.066c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.066-2.573c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/>
+              <circle cx="12" cy="12" r="3"/>
             </svg>
           </button>
+          {messages.length > 0 && (
+            <button className="ai-clear-btn" onClick={clearHistory} title="会話をリセット">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round"
+                  d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182m0-4.991v4.99"/>
+              </svg>
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* 設定パネル */}
+      {showSettings && (
+        <div className="ai-settings">
+          <label className="ai-settings-label">モデル</label>
+          <div className="ai-model-list">
+            {AI_MODELS.map((m) => {
+              const disabled = m.tier === 'premium' && !userApiKey
+              return (
+                <button
+                  key={m.id}
+                  className={`ai-model-option ${selectedModel.id === m.id ? 'active' : ''} ${disabled ? 'disabled' : ''}`}
+                  onClick={() => !disabled && handleModelChange(m.id)}
+                  disabled={disabled}
+                >
+                  <span className="ai-model-name">{m.label}</span>
+                  <span className={`ai-model-tier ${m.tier}`}>
+                    {m.tier === 'free' ? '無料' : 'PRO'}
+                  </span>
+                </button>
+              )
+            })}
+          </div>
+
+          <label className="ai-settings-label" style={{ marginTop: 12 }}>
+            OpenAI API キー
+            <span className="ai-settings-hint">入力すると GPT-5.4 mini が使えます</span>
+          </label>
+          <div className="ai-key-input-wrap">
+            <input
+              type="password"
+              className="ai-key-input"
+              value={userApiKey}
+              onChange={(e) => handleKeyChange(e.target.value)}
+              placeholder="sk-..."
+              spellCheck={false}
+            />
+            {userApiKey && (
+              <button className="ai-key-clear" onClick={() => handleKeyChange('')} title="キーを削除">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} width={14} height={14}>
+                  <path strokeLinecap="round" d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            )}
+          </div>
+          <p className="ai-settings-note">キーはセッション内のみ保持（タブを閉じると消えます）</p>
+        </div>
+      )}
+
+      {/* モデルバッジ */}
+      <div className="ai-model-bar">
+        <span className={`ai-model-badge ${selectedModel.tier}`}>{selectedModel.label}</span>
+        {!canUse && (
+          <span className="ai-model-warn">
+            {isPremium ? 'APIキーを入力してください' : 'アプリ側キー未設定'}
+          </span>
         )}
       </div>
 
@@ -105,7 +169,7 @@ export function AIPanel() {
                   key={s}
                   className="ai-suggestion"
                   onClick={() => sendMessage(s)}
-                  disabled={loading}
+                  disabled={loading || !canUse}
                 >
                   {s}
                 </button>
@@ -116,14 +180,10 @@ export function AIPanel() {
 
         {messages.map((msg, i) => (
           <div key={i} className={`ai-message ai-message-${msg.role}`}>
-            {msg.role === 'assistant' && (
-              <div className="ai-avatar">AI</div>
-            )}
+            {msg.role === 'assistant' && <div className="ai-avatar">AI</div>}
             <div className={`ai-bubble ai-bubble-${msg.role}`}>
               {msg.isThinking ? (
-                <div className="ai-thinking">
-                  <span /><span /><span />
-                </div>
+                <div className="ai-thinking"><span /><span /><span /></div>
               ) : (
                 <span className="ai-text">{msg.content}</span>
               )}
@@ -140,26 +200,24 @@ export function AIPanel() {
             {error}
           </div>
         )}
-
         <div ref={messagesEndRef} />
       </div>
 
       {/* 入力エリア */}
       <div className="ai-input-area">
         <textarea
-          ref={inputRef}
           className="ai-input"
           value={input}
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={handleKeyDown}
-          placeholder="例: 浅草上空を巡回する計画を作って"
+          placeholder={canUse ? '例: 浅草上空を巡回する計画を作って' : 'モデル設定を確認してください'}
           rows={2}
-          disabled={loading}
+          disabled={loading || !canUse}
         />
         <button
           className="ai-send-btn"
           onClick={handleSend}
-          disabled={!input.trim() || loading}
+          disabled={!input.trim() || loading || !canUse}
           title="送信 (Enter)"
         >
           {loading ? (

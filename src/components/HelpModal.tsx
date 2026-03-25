@@ -50,8 +50,8 @@ export function HelpModal({ onClose }: Props) {
               <div className="help-step">
                 <span className="help-step-num">4</span>
                 <div>
-                  <b>試しに飛ばす</b>
-                  <p>「試しに飛ばしてみる」ボタンでシミュレーション開始！</p>
+                  <b>シミュレーション</b>
+                  <p>飛行計画を開いて「飛行シミュレーション」ボタンで開始！</p>
                 </div>
               </div>
             </div>

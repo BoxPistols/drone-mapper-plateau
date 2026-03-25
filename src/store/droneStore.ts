@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import { droneSimBridge } from '../sim/droneSimBridge'
+import { generatePerimeterPoints, generateGridPoints } from '../utils/geoUtils'
 import type {
   CityConfig,
   DronePin,
@@ -45,6 +46,26 @@ export const PLATEAU_CITIES: CityConfig[] = [
 function uid() {
   return `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
 }
+
+// サンプルメディア用（Unsplash 固定URL — ドローン/航空写真）
+const AERIAL_PHOTOS = [
+  'https://images.unsplash.com/photo-1506947411487-a56738267384?w=640&h=480&fit=crop', // 都市俯瞰
+  'https://images.unsplash.com/photo-1477959858617-67f85cf4f1df?w=640&h=480&fit=crop', // 夜景都市
+  'https://images.unsplash.com/photo-1480714378408-67cf0d13bc1b?w=640&h=480&fit=crop', // 都市空撮
+  'https://images.unsplash.com/photo-1449824913935-59a10b8d2000?w=640&h=480&fit=crop', // 都市風景
+  'https://images.unsplash.com/photo-1514565131-fce0801e5785?w=640&h=480&fit=crop', // 東京タワー
+  'https://images.unsplash.com/photo-1540959733332-eab4deabeeaf?w=640&h=480&fit=crop', // 東京渋谷
+  'https://images.unsplash.com/photo-1493976040374-85c8e12f0c0e?w=640&h=480&fit=crop', // 日本寺社
+  'https://images.unsplash.com/photo-1528360983277-13d401cdc186?w=640&h=480&fit=crop', // 日本街並み
+]
+const PANORAMA_PHOTOS = [
+  'https://images.unsplash.com/photo-1513407030348-c983a97b98d8?w=1280&h=480&fit=crop', // 都市パノラマ
+  'https://images.unsplash.com/photo-1444723121867-7a241cacace9?w=1280&h=480&fit=crop', // 空撮パノラマ
+]
+const VIDEO_THUMBS = [
+  'https://images.unsplash.com/photo-1473968512647-3e447244af8f?w=640&h=360&fit=crop', // ドローン飛行
+  'https://images.unsplash.com/photo-1527977966376-1c8408f9f108?w=640&h=360&fit=crop', // 航空映像
+]
 
 interface DroneStore {
   // 都市
@@ -95,6 +116,16 @@ interface DroneStore {
   media: MediaItem[]
   addMedia: (item: Omit<MediaItem, 'id'>) => void
   deleteMedia: (id: string) => void
+  selectedMediaId: string | null
+  setSelectedMediaId: (id: string | null) => void
+
+  // ゾーンからWP生成
+  generateWaypointsFromZone: (planId: string, zoneId: string, opts: {
+    mode: 'perimeter' | 'grid'
+    spacingM: number
+    altAGL: number
+    speedMS: number
+  }) => void
 
   // シミュレーション
   simulation: SimState | null
@@ -259,6 +290,43 @@ export const useDroneStore = create<DroneStore>()(
       addMedia: (item) =>
         set((s) => ({ media: [{ ...item, id: uid() }, ...s.media] })),
       deleteMedia: (id) => set((s) => ({ media: s.media.filter((m) => m.id !== id) })),
+      selectedMediaId: null,
+      setSelectedMediaId: (id) => set({ selectedMediaId: id }),
+
+      // ゾーンからWP生成
+      generateWaypointsFromZone: (planId, zoneId, opts) => {
+        const zone = get().zones.find((z) => z.id === zoneId)
+        const plan = get().plans.find((p) => p.id === planId)
+        if (!zone || !plan || zone.coordinates.length < 3) return
+
+        const points = opts.mode === 'grid'
+          ? generateGridPoints(zone.coordinates, opts.spacingM)
+          : generatePerimeterPoints(zone.coordinates, opts.spacingM)
+
+        if (points.length > 100) {
+          get().addToast(`生成ポイントが${points.length}点で多すぎます。間隔を広げてください`, 'warning')
+          return
+        }
+        if (points.length === 0) {
+          get().addToast('ポイントが生成できませんでした', 'warning')
+          return
+        }
+
+        // 既存WPの後に追加
+        const wps = [...plan.waypoints]
+        for (const [lon, lat] of points) {
+          wps.push({
+            id: uid(),
+            lon, lat,
+            altAGL: opts.altAGL,
+            groundAlt: 0,
+            speedMS: opts.speedMS,
+            action: 'none' as const,
+          })
+        }
+        get().updatePlan(planId, { waypoints: wps })
+        get().addToast(`${zone.name} から ${points.length} ポイントを生成しました`, 'success')
+      },
 
       // シミュレーション (永続化しない)
       simulation: null,
@@ -389,6 +457,29 @@ export const useDroneStore = create<DroneStore>()(
           },
         ]
 
+        const media: MediaItem[] = [
+          // ── ギャラリー写真（8枚） ──
+          { id: uid(), recordId: recId, name: 'WP2_正面_01.jpg', type: 'photo', lon: 139.7980, lat: 35.7130, altM: 65, timestamp: now, sizeKB: 4200, dataUrl: AERIAL_PHOTOS[0], notes: '浅草寺 正面' },
+          { id: uid(), recordId: recId, name: 'WP2_正面_02.jpg', type: 'photo', lon: 139.7981, lat: 35.7131, altM: 65, timestamp: now, sizeKB: 3800, dataUrl: AERIAL_PHOTOS[1] },
+          { id: uid(), recordId: recId, name: 'WP2_俯瞰_03.jpg', type: 'photo', lon: 139.7980, lat: 35.7130, altM: 65, timestamp: now, sizeKB: 5100, dataUrl: AERIAL_PHOTOS[2], notes: '俯瞰ショット' },
+          { id: uid(), recordId: recId, name: 'WP4_隅田川_04.jpg', type: 'photo', lon: 139.8010, lat: 35.7195, altM: 85, timestamp: now, sizeKB: 4700, dataUrl: AERIAL_PHOTOS[3] },
+          { id: uid(), recordId: recId, name: 'WP4_隅田川_05.jpg', type: 'photo', lon: 139.8011, lat: 35.7196, altM: 85, timestamp: now, sizeKB: 3900, dataUrl: AERIAL_PHOTOS[4] },
+          { id: uid(), recordId: recId, name: 'WP4_スカイツリー_06.jpg', type: 'photo', lon: 139.8012, lat: 35.7195, altM: 85, timestamp: now, sizeKB: 5500, dataUrl: AERIAL_PHOTOS[5], notes: 'スカイツリー方面' },
+          { id: uid(), recordId: recId, name: 'WP5_ホバー_07.jpg', type: 'photo', lon: 139.7960, lat: 35.7180, altM: 55, timestamp: now, sizeKB: 4100, dataUrl: AERIAL_PHOTOS[6] },
+          { id: uid(), recordId: recId, name: 'WP5_ホバー_08.jpg', type: 'photo', lon: 139.7960, lat: 35.7180, altM: 55, timestamp: now, sizeKB: 3600, dataUrl: AERIAL_PHOTOS[7] },
+
+          // ── パノラマ写真（2枚） ──
+          { id: uid(), recordId: recId, name: 'WP2_パノラマ_360.jpg', type: 'panorama', lon: 139.7980, lat: 35.7130, altM: 65, timestamp: now, sizeKB: 18200, dataUrl: PANORAMA_PHOTOS[0], notes: 'WP2地点 360°パノラマ' },
+          { id: uid(), recordId: recId, name: 'WP5_パノラマ_360.jpg', type: 'panorama', lon: 139.7960, lat: 35.7180, altM: 55, timestamp: now, sizeKB: 15800, dataUrl: PANORAMA_PHOTOS[1], notes: 'WP5ホバリング地点 360°' },
+
+          // ── 動画（2本） ──
+          { id: uid(), recordId: recId, name: 'WP2-WP3_飛行映像.mp4', type: 'video', lon: 139.7980, lat: 35.7130, altM: 65, timestamp: now, sizeKB: 125000, duration: 45, dataUrl: VIDEO_THUMBS[0], videoUrl: 'procedural', notes: 'WP2→WP3 飛行中撮影' },
+          { id: uid(), recordId: recId, name: 'WP5_ホバー撮影.mp4', type: 'video', lon: 139.7960, lat: 35.7180, altM: 55, timestamp: now, sizeKB: 82000, duration: 30, dataUrl: VIDEO_THUMBS[1], videoUrl: 'procedural', notes: 'WP5 ホバリング中360°撮影' },
+
+          // ── 3Dモデル（1つ） ──
+          { id: uid(), recordId: recId, name: '浅草寺_点群モデル.glb', type: 'model3d', lon: 139.7967, lat: 35.7148, altM: 50, timestamp: now, sizeKB: 45000, notes: 'WP2周辺の点群データから生成', modelUrl: 'inline' },
+        ]
+
         droneSimBridge.active = false
 
         // 総飛行時間計算
@@ -414,6 +505,7 @@ export const useDroneStore = create<DroneStore>()(
           pins, zones,
           plans: [plan], activePlanId: planId,
           records,
+          media,
           mapPopup: null,
           sidebarTab: 'plans',
           // シミュレーション自動開始（追従カメラ）
@@ -437,7 +529,12 @@ export const useDroneStore = create<DroneStore>()(
         zones: s.zones,
         plans: s.plans,
         records: s.records,
-        media: s.media.map((m) => ({ ...m, dataUrl: undefined })), // thumbnailは除外
+        media: s.media.map((m) => ({
+          ...m,
+          // base64データは巨大なので除外、URL文字列は軽量なので保持
+          dataUrl: m.dataUrl?.startsWith('data:') ? undefined : m.dataUrl,
+          videoUrl: undefined,
+        })),
       }),
     }
   )

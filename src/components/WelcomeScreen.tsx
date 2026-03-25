@@ -26,8 +26,13 @@ export function WelcomeScreen({ onClose }: Props) {
         {/* ロゴ */}
         <div className="welcome-logo">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5}>
-            <path strokeLinecap="round" strokeLinejoin="round"
-              d="M12 2L8 6H3l2.5 7.5L3 18h5l4 4 4-4h5l-2.5-4.5L19 6h-5l-3.5-4zM12 8v8M8 12h8"/>
+              <circle cx="12" cy="11" r="2.5"/>
+              <path strokeLinecap="round" d="M12 8.5V6M12 16v-2.5M14.5 11H17M7 11h2.5"/>
+              <path strokeLinecap="round" d="M8 7l1.5 1.5M14.5 14.5L16 16M16 7l-1.5 1.5M9.5 14.5L8 16"/>
+              <circle cx="8" cy="7" r="1" fill="currentColor"/>
+              <circle cx="16" cy="7" r="1" fill="currentColor"/>
+              <circle cx="8" cy="16" r="1" fill="currentColor"/>
+              <circle cx="16" cy="16" r="1" fill="currentColor"/>
           </svg>
         </div>
 
