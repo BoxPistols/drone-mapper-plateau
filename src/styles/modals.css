@@ -1,0 +1,162 @@
+/* ── モーダル共通 ── */
+.modal-overlay {
+  position: fixed; inset: 0;
+  background: rgba(15,23,42,0.5); backdrop-filter: blur(4px);
+  z-index: 1000;
+  display: flex; align-items: center; justify-content: center;
+  padding: 16px;
+}
+.modal-panel {
+  background: #fff;
+  border: 1.5px solid var(--border);
+  border-radius: 16px;
+  display: flex; flex-direction: column;
+  max-height: 85vh; overflow: hidden;
+  box-shadow: 0 24px 64px rgba(0,0,0,0.2);
+}
+.modal-header {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 18px 22px 14px;
+  border-bottom: 1.5px solid var(--border);
+  flex-shrink: 0;
+}
+.modal-header h2 { font-size: 17px; font-weight: 700; }
+.modal-close {
+  width: 32px; height: 32px;
+  background: var(--bg-elevated); border: 1.5px solid var(--border);
+  border-radius: 8px; color: var(--text-muted); cursor: pointer;
+  font-size: 18px; display: flex; align-items: center; justify-content: center;
+  transition: all 0.15s;
+}
+.modal-close:hover { border-color: var(--error); color: var(--error); background: #fee2e2; }
+
+/* ── ヘルプモーダル ── */
+.help-modal { width: 640px; max-height: 82vh; }
+.help-content {
+  padding: 20px 24px 24px;
+  overflow-y: auto; flex: 1;
+  display: flex; flex-direction: column; gap: 20px;
+}
+.help-section { display: flex; flex-direction: column; gap: 12px; }
+.help-section h3 { font-size: 15px; font-weight: 700; color: var(--text-primary); }
+.help-section--highlight {
+  background: var(--accent-dim);
+  border: 1.5px solid #93c5fd;
+  border-radius: 12px; padding: 14px 16px;
+}
+
+/* 4ステップカード */
+.help-steps { display: flex; flex-direction: column; gap: 10px; }
+.help-step {
+  display: flex; align-items: flex-start; gap: 14px;
+  padding: 12px 16px;
+  background: var(--bg-elevated);
+  border: 1.5px solid var(--border);
+  border-radius: 12px;
+}
+.help-step-num {
+  width: 30px; height: 30px; border-radius: 50%;
+  background: var(--accent); color: #fff;
+  font-size: 14px; font-weight: 700;
+  display: flex; align-items: center; justify-content: center;
+  flex-shrink: 0; margin-top: 1px;
+}
+.help-step b { font-size: 14px; font-weight: 700; display: block; margin-bottom: 3px; }
+.help-step p { font-size: 13px; color: var(--text-muted); margin: 0; line-height: 1.5; }
+.help-note { font-size: 13px; color: var(--text-muted); line-height: 1.7; }
+.help-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.help-table tr { border-bottom: 1px solid var(--border); }
+.help-table tr:last-child { border-bottom: none; }
+.help-table td { padding: 9px 12px; vertical-align: top; line-height: 1.5; }
+.help-table td:first-child { color: var(--text-muted); width: 55%; }
+.help-badge {
+  display: inline-block;
+  background: var(--bg-elevated); border: 1.5px solid var(--border);
+  border-radius: 6px; padding: 2px 8px;
+  font-size: 12px; font-weight: 700; color: var(--text-primary);
+}
+
+/* ── ウェルカム画面 ── */
+.welcome-overlay {
+  position: fixed; inset: 0;
+  background: rgba(15,23,42,0.6);
+  backdrop-filter: blur(8px);
+  z-index: 2000;
+  display: flex; align-items: center; justify-content: center;
+  padding: 20px;
+  animation: welcomeIn 0.4s ease forwards;
+}
+@keyframes welcomeIn { from { opacity:0 } to { opacity:1 } }
+
+.welcome-panel {
+  background: #fff;
+  border-radius: 24px;
+  padding: 48px 52px;
+  max-width: 580px; width: 100%;
+  text-align: center;
+  box-shadow: 0 32px 80px rgba(0,0,0,0.25);
+  animation: welcomePanelIn 0.45s ease forwards;
+  display: flex; flex-direction: column; align-items: center; gap: 24px;
+}
+@keyframes welcomePanelIn { from { opacity:0; transform:translateY(24px) scale(0.96) } to { opacity:1; transform:none } }
+
+.welcome-logo {
+  width: 72px; height: 72px;
+  background: var(--accent);
+  border-radius: 20px;
+  display: flex; align-items: center; justify-content: center;
+}
+.welcome-logo svg { width: 42px; height: 42px; color: #fff; }
+
+.welcome-title {
+  font-size: 28px; font-weight: 700;
+  color: var(--text-primary);
+  letter-spacing: -0.02em;
+  line-height: 1.2;
+}
+.welcome-subtitle {
+  font-size: 16px; color: var(--text-muted);
+  line-height: 1.7; max-width: 400px;
+}
+
+.welcome-actions {
+  display: flex; flex-direction: column; gap: 12px;
+  width: 100%; max-width: 360px;
+}
+
+.welcome-btn-demo {
+  display: flex; align-items: center; justify-content: center; gap: 10px;
+  padding: 18px 24px;
+  background: var(--accent); border: none;
+  border-radius: 14px; color: #fff; cursor: pointer;
+  font-size: 17px; font-weight: 700; font-family: 'Noto Sans JP', sans-serif;
+  transition: all 0.15s; box-shadow: 0 4px 20px rgba(3,105,161,0.35);
+  width: 100%;
+}
+.welcome-btn-demo:hover { background: #0284c7; transform: translateY(-2px); box-shadow: 0 8px 28px rgba(3,105,161,0.45); }
+.welcome-btn-demo svg { width: 22px; height: 22px; }
+
+.welcome-btn-start {
+  display: flex; align-items: center; justify-content: center; gap: 10px;
+  padding: 16px 24px;
+  background: var(--bg-elevated); border: 2px solid var(--border);
+  border-radius: 14px; color: var(--text-primary); cursor: pointer;
+  font-size: 16px; font-weight: 600; font-family: 'Noto Sans JP', sans-serif;
+  transition: all 0.15s; width: 100%;
+}
+.welcome-btn-start:hover { border-color: var(--border-hover); background: var(--bg-hover); transform: translateY(-1px); }
+.welcome-btn-start svg { width: 20px; height: 20px; color: var(--text-muted); }
+
+.welcome-hint {
+  font-size: 12px; color: var(--text-faint);
+  line-height: 1.5;
+}
+
+/* LODバッジ（ライトテーマ版） */
+.lod-badge {
+  font-size: 11px; font-weight: 700;
+  letter-spacing: 0.04em; padding: 3px 7px; border-radius: 5px;
+}
+.lod-1 { background: #dcfce7; color: #15803d; border: 1px solid #86efac; }
+.lod-2 { background: var(--accent-dim); color: var(--accent); border: 1px solid #93c5fd; }
+.lod-3 { background: #fef3c7; color: #d97706; border: 1px solid #fcd34d; }

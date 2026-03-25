@@ -1,0 +1,466 @@
+/* ── メディアビューワーオーバーレイ（Kraft風） ── */
+.media-viewer-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 9000;
+  background: #0f172a;
+  display: flex;
+  flex-direction: column;
+  color: #e2e8f0;
+  font-family: 'Noto Sans JP', 'Noto Sans', sans-serif;
+  animation: viewer-in .25s ease;
+}
+@keyframes viewer-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+/* ヘッダー */
+.media-viewer-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 20px;
+  background: rgba(15, 23, 42, .95);
+  border-bottom: 1px solid #1e293b;
+  flex-shrink: 0;
+}
+.media-viewer-back {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: rgba(255,255,255,.08);
+  border: 1px solid rgba(255,255,255,.12);
+  color: #e2e8f0;
+  border-radius: 8px;
+  padding: 6px 14px;
+  font-size: 14px;
+  cursor: pointer;
+  transition: background .15s;
+}
+.media-viewer-back:hover { background: rgba(255,255,255,.14); }
+.media-viewer-header-name {
+  font-weight: 500;
+  font-size: 15px;
+  color: #f1f5f9;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  flex: 1;
+  min-width: 0;
+}
+.media-viewer-badge {
+  display: inline-block;
+  padding: 3px 10px;
+  border-radius: 12px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #fff;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+/* ボディ */
+.media-viewer-body {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+.media-viewer-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  position: relative;
+}
+
+/* 情報パネル（右サイド） */
+.media-viewer-info {
+  width: 280px;
+  flex-shrink: 0;
+  background: rgba(30, 41, 59, .7);
+  border-left: 1px solid #1e293b;
+  padding: 24px 20px;
+  overflow-y: auto;
+}
+.media-viewer-info-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: #94a3b8;
+  text-transform: uppercase;
+  letter-spacing: .05em;
+  margin: 0 0 20px 0;
+}
+.media-viewer-info-row {
+  margin-bottom: 16px;
+}
+.media-viewer-info-label {
+  display: block;
+  font-size: 11px;
+  font-weight: 500;
+  color: #64748b;
+  margin-bottom: 4px;
+}
+.media-viewer-info-value {
+  display: block;
+  font-size: 14px;
+  color: #e2e8f0;
+  word-break: break-all;
+}
+.media-viewer-info-coords {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 13px;
+  font-family: 'SF Mono', 'Fira Code', monospace;
+  color: #94a3b8;
+}
+
+/* ── 写真ビューワー ── */
+.media-viewer-photo {
+  width: 100%; height: 100%;
+  display: flex; align-items: center; justify-content: center;
+  padding: 24px;
+}
+.media-viewer-photo img {
+  max-width: 100%; max-height: 100%;
+  object-fit: contain; border-radius: 4px;
+}
+.media-viewer-placeholder {
+  display: flex; flex-direction: column;
+  align-items: center; gap: 12px; color: #475569;
+}
+.media-viewer-placeholder p { margin: 0; font-size: 14px; }
+
+/* スライドショー ナビ */
+.slide-nav {
+  position: absolute;
+  top: 50%; transform: translateY(-50%);
+  width: 44px; height: 44px;
+  background: rgba(0,0,0,.4);
+  border: 1px solid rgba(255,255,255,.12);
+  border-radius: 50%;
+  color: #e2e8f0;
+  display: flex; align-items: center; justify-content: center;
+  cursor: pointer;
+  transition: all .15s;
+  z-index: 2;
+  backdrop-filter: blur(4px);
+}
+.slide-nav:hover:not(:disabled) {
+  background: rgba(255,255,255,.15);
+  border-color: rgba(255,255,255,.3);
+}
+.slide-nav:disabled { opacity: .2; cursor: default; }
+.slide-nav-prev { left: 20px; }
+.slide-nav-next { right: 20px; }
+.slide-bar {
+  position: absolute;
+  bottom: 20px; left: 50%;
+  transform: translateX(-50%);
+  display: flex; align-items: center; gap: 12px;
+  background: rgba(0,0,0,.5);
+  border: 1px solid rgba(255,255,255,.1);
+  border-radius: 20px;
+  padding: 6px 16px;
+  backdrop-filter: blur(8px);
+  z-index: 2;
+}
+.slide-counter {
+  color: #94a3b8;
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+.slide-autoplay {
+  width: 28px; height: 28px;
+  background: rgba(255,255,255,.08);
+  border: 1px solid rgba(255,255,255,.15);
+  border-radius: 50%;
+  color: #94a3b8;
+  display: flex; align-items: center; justify-content: center;
+  cursor: pointer;
+  transition: all .15s;
+}
+.slide-autoplay:hover { background: rgba(255,255,255,.15); color: #e2e8f0; }
+.slide-autoplay.active {
+  background: rgba(59,130,246,.3);
+  border-color: rgba(59,130,246,.5);
+  color: #60a5fa;
+}
+
+/* 比較ボタン（slide-bar内） */
+.slide-compare-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: rgba(255,255,255,.08);
+  border: 1px solid rgba(255,255,255,.15);
+  color: #94a3b8;
+  border-radius: 14px;
+  padding: 4px 12px;
+  font-size: 12px;
+  cursor: pointer;
+  transition: all .15s;
+  font-family: inherit;
+}
+.slide-compare-btn:hover {
+  background: rgba(255,255,255,.15);
+  color: #e2e8f0;
+}
+
+/* ── パノラマビューワー ── */
+.media-viewer-panorama-scroll {
+  width: 100%; height: 100%;
+  overflow-x: auto; overflow-y: hidden;
+  cursor: grab;
+  display: flex; align-items: center;
+  position: relative;
+  scrollbar-width: thin;
+  scrollbar-color: #334155 transparent;
+}
+.media-viewer-panorama-scroll:active { cursor: grabbing; }
+.media-viewer-panorama-scroll img {
+  height: 80%; width: auto;
+  display: block; user-select: none;
+}
+.media-viewer-panorama-badge {
+  position: absolute;
+  top: 16px; left: 16px;
+  background: rgba(245,158,11,.85);
+  color: #fff; font-weight: 700; font-size: 13px;
+  padding: 4px 12px; border-radius: 16px;
+  pointer-events: none;
+}
+
+/* ── 動画ビューワー ── */
+.media-viewer-video {
+  width: 100%; height: 100%;
+  display: flex; flex-direction: column;
+  align-items: center; justify-content: center;
+  padding: 24px;
+}
+.media-viewer-video-screen {
+  display: flex; flex-direction: column;
+  align-items: center; justify-content: center;
+  gap: 16px; flex: 1;
+}
+.media-viewer-video-play {
+  cursor: pointer; opacity: .7; transition: opacity .2s;
+}
+.media-viewer-video-play:hover { opacity: 1; }
+.media-viewer-video-name {
+  margin: 0; font-size: 16px; color: #cbd5e1; text-align: center;
+}
+.media-viewer-video-duration {
+  margin: 0; font-size: 28px; font-weight: 600; color: #f1f5f9;
+  font-family: 'SF Mono', 'Fira Code', monospace;
+}
+.media-viewer-video-progress {
+  width: 100%; max-width: 600px; height: 4px;
+  background: #1e293b; border-radius: 2px;
+  overflow: hidden; margin-top: 16px;
+}
+.media-viewer-video-progress-bar {
+  height: 100%; background: #ef4444;
+  border-radius: 2px; transition: width .3s;
+}
+
+/* ── 動画プレイヤー（HTML5 video） ── */
+.media-viewer-video-player {
+  position: relative;
+  width: 100%;
+  max-width: 900px;
+  aspect-ratio: 16/9;
+  background: #000;
+  border-radius: 8px;
+  overflow: hidden;
+}
+.media-viewer-video-player video {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  cursor: pointer;
+  display: block;
+}
+.video-play-overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0,0,0,.3);
+  border: none;
+  cursor: pointer;
+  transition: background .2s;
+}
+.video-play-overlay:hover { background: rgba(0,0,0,.15); }
+.video-controls {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 0;
+  width: 100%;
+  max-width: 900px;
+  color: #94a3b8;
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+.video-ctrl-btn {
+  background: rgba(255,255,255,.1);
+  border: 1px solid rgba(255,255,255,.15);
+  color: #e2e8f0;
+  width: 36px; height: 36px;
+  border-radius: 50%;
+  cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  flex-shrink: 0;
+  transition: background .15s;
+}
+.video-ctrl-btn:hover { background: rgba(255,255,255,.2); }
+.video-seekbar {
+  flex: 1;
+  height: 4px;
+  accent-color: #ef4444;
+  cursor: pointer;
+}
+.video-time {
+  font-family: 'SF Mono', 'Fira Code', monospace;
+  font-size: 12px;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+/* ── 3Dモデルビューワー ── */
+.media-viewer-model3d {
+  width: 100%; height: 100%; position: relative;
+}
+.media-viewer-model3d canvas {
+  display: block;
+  width: 100% !important; height: 100% !important;
+}
+.media-viewer-model3d-hint {
+  position: absolute;
+  bottom: 20px; left: 50%;
+  transform: translateX(-50%);
+  background: rgba(30,41,59,.8);
+  color: #94a3b8; font-size: 12px;
+  padding: 6px 16px; border-radius: 16px;
+  pointer-events: none;
+  border: 1px solid rgba(255,255,255,.08);
+}
+
+/* ── 写真Diff比較 ── */
+.photo-diff-overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  background: #0f172a;
+  z-index: 2;
+}
+.photo-diff-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 20px;
+  border-bottom: 1px solid #1e293b;
+  flex-shrink: 0;
+}
+.photo-diff-container {
+  flex: 1;
+  position: relative;
+  overflow: hidden;
+  user-select: none;
+}
+.photo-diff-img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+.photo-diff-left { z-index: 1; }
+.photo-diff-divider {
+  position: absolute;
+  top: 0; bottom: 0;
+  width: 4px;
+  background: rgba(255,255,255,.8);
+  transform: translateX(-50%);
+  z-index: 2;
+  cursor: col-resize;
+}
+.photo-diff-handle {
+  position: absolute;
+  top: 50%; left: 50%;
+  transform: translate(-50%, -50%);
+  width: 36px; height: 36px;
+  background: rgba(255,255,255,.9);
+  border-radius: 50%;
+  box-shadow: 0 2px 12px rgba(0,0,0,.4);
+  display: flex; align-items: center; justify-content: center;
+  cursor: col-resize;
+}
+.photo-diff-label {
+  position: absolute;
+  bottom: 20px;
+  background: rgba(0,0,0,.6);
+  color: #e2e8f0;
+  font-size: 12px;
+  padding: 4px 12px;
+  border-radius: 12px;
+  z-index: 3;
+  backdrop-filter: blur(4px);
+  max-width: 40%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.photo-diff-label-left { left: 20px; }
+.photo-diff-label-right { right: 20px; }
+
+/* Diff対象選択 */
+.diff-target-selector {
+  width: 100%; height: 100%;
+  display: flex; flex-direction: column;
+  padding: 24px;
+}
+.diff-target-header {
+  display: flex; align-items: center; gap: 12px;
+  margin-bottom: 20px;
+  color: #e2e8f0;
+  font-size: 15px; font-weight: 500;
+}
+.diff-target-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  gap: 12px;
+  overflow-y: auto;
+  flex: 1;
+}
+.diff-target-card {
+  border-radius: 8px;
+  overflow: hidden;
+  border: 2px solid transparent;
+  cursor: pointer;
+  transition: border-color .15s;
+  background: #1e293b;
+}
+.diff-target-card:hover { border-color: #3b82f6; }
+.diff-target-card img {
+  width: 100%;
+  aspect-ratio: 4/3;
+  object-fit: cover;
+  display: block;
+}
+.diff-target-card span {
+  display: block;
+  padding: 6px 8px;
+  font-size: 11px;
+  color: #94a3b8;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
