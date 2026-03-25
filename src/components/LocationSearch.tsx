@@ -1,49 +1,15 @@
-import { useState, useRef } from 'react'
-
-interface GeoResult {
-  display_name: string
-  lat: string
-  lon: string
-}
+import { useNominatimSearch } from '../hooks/useNominatimSearch'
 
 interface Props {
   onSelect: (lat: number, lon: number, name: string) => void
 }
 
 export function LocationSearch({ onSelect }: Props) {
-  const [query, setQuery] = useState('')
-  const [results, setResults] = useState<GeoResult[]>([])
-  const [loading, setLoading] = useState(false)
-  const [open, setOpen] = useState(false)
-  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const { query, results, loading, open, setOpen, handleChange, clear } = useNominatimSearch()
 
-  const search = async (q: string) => {
-    if (!q.trim()) { setResults([]); return }
-    setLoading(true)
-    try {
-      const url = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(q)}&format=json&countrycodes=jp&limit=6&accept-language=ja`
-      const res = await fetch(url, { headers: { 'Accept-Language': 'ja', 'User-Agent': 'DroneMapper/1.0 (demo)' } })
-      const data: GeoResult[] = await res.json()
-      setResults(data)
-      setOpen(true)
-    } catch {
-      setResults([])
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  const handleChange = (v: string) => {
-    setQuery(v)
-    if (timerRef.current) clearTimeout(timerRef.current)
-    timerRef.current = setTimeout(() => search(v), 400)
-  }
-
-  const handleSelect = (r: GeoResult) => {
+  const handleSelect = (r: { lat: string; lon: string; display_name: string }) => {
     onSelect(parseFloat(r.lat), parseFloat(r.lon), r.display_name)
-    setQuery(r.display_name.split(',')[0])
-    setOpen(false)
-    setResults([])
+    clear()
   }
 
   return (
@@ -63,7 +29,7 @@ export function LocationSearch({ onSelect }: Props) {
         />
         {loading && <div className="search-spinner" />}
         {query && !loading && (
-          <button className="search-clear" onClick={() => { setQuery(''); setResults([]); setOpen(false) }}>×</button>
+          <button className="search-clear" onClick={clear}>×</button>
         )}
       </div>
       {open && results.length > 0 && (
