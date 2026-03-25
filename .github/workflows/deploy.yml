@@ -29,6 +29,8 @@ jobs:
 
       - run: npm ci
       - run: npx vite build
+        env:
+          VITE_CESIUM_TOKEN: ${{ secrets.VITE_CESIUM_TOKEN }}
 
       - uses: actions/configure-pages@v5
         with:
