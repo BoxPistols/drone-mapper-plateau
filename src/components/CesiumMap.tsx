@@ -13,12 +13,10 @@ import {
 } from 'cesium'
 import { useDroneStore } from '../store/droneStore'
 import { droneSimBridge } from '../sim/droneSimBridge'
+import { cesiumViewerRef } from '../sim/cesiumViewerRef'
 import 'cesium/Build/Cesium/Widgets/widgets.css'
 
 Ion.defaultAccessToken = import.meta.env.VITE_CESIUM_TOKEN ?? ''
-
-// Cesium Viewer を他コンポーネントから参照できるように公開
-export const cesiumViewerRef: { current: Viewer | null } = { current: null }
 
 const ZONE_FILL: Record<string, Color> = {
   planned:    Color.fromCssColorString('#58a6ff').withAlpha(0.2),
@@ -114,7 +112,7 @@ function buildDroneCanvas(size = 72): HTMLCanvasElement {
   for (let i = 0; i < 8; i++) {
     const a = (i * 45) * Math.PI / 180
     const bx = cx + size * 0.095 * Math.cos(a), by = cy + size * 0.095 * Math.sin(a)
-    i === 0 ? ctx.moveTo(bx, by) : ctx.lineTo(bx, by)
+    if (i === 0) ctx.moveTo(bx, by); else ctx.lineTo(bx, by)
   }
   ctx.closePath()
   const gBody = ctx.createRadialGradient(cx - size * 0.02, cy - size * 0.02, 0, cx, cy, size * 0.1)
@@ -207,7 +205,7 @@ export function CesiumMap() {
       viewerRef.current = null
       cesiumViewerRef.current = null
     }
-  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [])
 
   // ── 都市切替（3D Tiles）────────────────────────
   useEffect(() => {
@@ -372,8 +370,10 @@ export function CesiumMap() {
       if (mapMode === 'zone') {
         const pts = drawingZonePoints.slice(0, -2)
         if (pts.length >= 3) {
-          const name = prompt('ゾーン名を入力', 'フライトゾーン') ?? 'フライトゾーン'
-          commitZone(name, 'planned', pts)
+          // ダブルクリックは既定名で即確定（名前はゾーンをクリックして後から変更可能）。
+          // prompt() はモバイルwebviewで抑制されうるため使わない
+          commitZone('飛行エリア', 'planned', pts)
+          useDroneStore.getState().addToast('飛行エリアを作成しました。名前はクリックで変更できます', 'success')
         }
       }
       // select モードのダブルクリックは地図ズームに任せる（何もしない）
@@ -431,7 +431,7 @@ export function CesiumMap() {
       handlerRef.current = null
       window.removeEventListener('keydown', onKeyDown)
     }
-  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [])
 
   // ── 静的エンティティ更新（ピン・ゾーン・WP）────
   useEffect(() => {
@@ -461,7 +461,9 @@ export function CesiumMap() {
           color: Color.fromCssColorString(pin.color),
           outlineColor: Color.WHITE,
           outlineWidth: 2,
-          heightReference: HeightReference.RELATIVE_TO_GROUND,
+          // pin.alt は海抜(MSL)。RELATIVE_TO_GROUND だと AGL 扱いで地盤高ぶん浮くため
+          // 絶対高度を尊重する NONE を使う（WPマーカーと同じ座標系）
+          heightReference: HeightReference.NONE,
           disableDepthTestDistance: Number.POSITIVE_INFINITY,
         },
         label: {
@@ -473,9 +475,9 @@ export function CesiumMap() {
           style: LabelStyle.FILL_AND_OUTLINE,
           verticalOrigin: VerticalOrigin.BOTTOM,
           horizontalOrigin: HorizontalOrigin.CENTER,
-          pixelOffset: { x: 0, y: -16 } as never,
+          pixelOffset: new Cartesian2(0, -16),
           scaleByDistance: new NearFarScalar(200, 1, 4000, 0.3),
-          heightReference: HeightReference.RELATIVE_TO_GROUND,
+          heightReference: HeightReference.NONE,
           disableDepthTestDistance: Number.POSITIVE_INFINITY,
         },
       }))
@@ -601,7 +603,7 @@ export function CesiumMap() {
             fillColor: Color.WHITE, outlineColor: Color.BLACK, outlineWidth: 2,
             style: LabelStyle.FILL_AND_OUTLINE,
             verticalOrigin: VerticalOrigin.BOTTOM,
-            pixelOffset: { x: 0, y: -16 } as never,
+            pixelOffset: new Cartesian2(0, -16),
             scaleByDistance: new NearFarScalar(100, 1, 6000, 0.2),
             heightReference: HeightReference.NONE,
             disableDepthTestDistance: Number.POSITIVE_INFINITY,
@@ -620,7 +622,7 @@ export function CesiumMap() {
         }))
       })
     }
-  }, [ // eslint-disable-line react-hooks/exhaustive-deps
+  }, [
     store.pins, store.zones, store.plans, store.activePlanId, store.drawingZonePoints,
   ])
 
@@ -644,6 +646,8 @@ export function CesiumMap() {
     }
 
     droneSimBridge.active = true
+    // 初回フレームで前回のモードが残りドローン表示がちらつくのを防ぐ
+    droneSimBridge.cameraMode = store.simulation.cameraMode
 
     // ─ ドローン位置: groundAlt (地盤高MSL) + altAGL (地上高) = 絶対高度
     // groundAlt は preRender ループで globe.getHeight() から毎フレーム更新される
@@ -689,7 +693,7 @@ export function CesiumMap() {
         outlineWidth: 3,
         style: LabelStyle.FILL_AND_OUTLINE,
         verticalOrigin: VerticalOrigin.BOTTOM,
-        pixelOffset: { x: 0, y: -40 } as never,
+        pixelOffset: new Cartesian2(0, -40),
         disableDepthTestDistance: Number.POSITIVE_INFINITY,
         show: droneVisible as never,
       },
@@ -733,9 +737,12 @@ export function CesiumMap() {
       const sim = useDroneStore.getState().simulation
       if (!sim || !droneSimBridge.active) return
 
-      // 地盤高を同期取得（ロード済みタイルから高速に返る）
+      // 地盤高を同期取得（ロード済みタイルから高速に返る）。
+      // 未ロードタイルで getHeight が undefined を返すとき ?? 0 にすると海抜0へ落ち、
+      // 機体とカメラが地形高さぶん瞬間的に沈む。取得できない間は直前値を維持する。
       const carto = Cartographic.fromDegrees(droneSimBridge.lon, droneSimBridge.lat)
-      droneSimBridge.groundAlt = viewer.scene.globe.getHeight(carto) ?? 0
+      const groundH = viewer.scene.globe.getHeight(carto)
+      if (groundH != null) droneSimBridge.groundAlt = groundH
 
       const pos = Cartesian3.fromDegrees(
         droneSimBridge.lon,
@@ -818,15 +825,22 @@ export function CesiumMap() {
     }
   }, [store.simulation?.planId]) // planIdが変わった時だけエンティティを再生成
 
-  // ── カメラモード変更（free に戻す時 lookAt 解除）
+  // ── カメラモード変更（free に戻す時 lookAt 解除 + バンク角リセット）
   useEffect(() => {
     const viewer = viewerRef.current
     if (!viewer) return
     if (store.simulation?.cameraMode === 'free') {
       // Matrix4.IDENTITY でロック解除（カメラ位置が origin のときの NaN を回避）
       try { viewer.camera.lookAtTransform(Matrix4.IDENTITY) } catch { /* noop */ }
+      // POVから抜けるとバンク角(roll)が残り、俯瞰操作中も地平線が傾いたままになる
+      smoothBankRef.current = 0
+      const c = viewer.camera
+      if (Math.abs(c.roll) > 1e-4) {
+        c.setView({ destination: c.position, orientation: { heading: c.heading, pitch: c.pitch, roll: 0 } })
+      }
     }
-  }, [store.simulation?.cameraMode])
+    // cameraMode の変化時のみ実行したいので simulation 全体は依存に含めない
+  }, [store.simulation?.cameraMode]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── 場所検索 flyTo イベント ──────────────────
   useEffect(() => {
@@ -869,7 +883,7 @@ export function CesiumMap() {
     const viewer = viewerRef.current
     if (!viewer) return
     const amount = viewer.camera.positionCartographic.height * 0.3
-    dir === 'in' ? viewer.camera.zoomIn(amount) : viewer.camera.zoomOut(amount)
+    if (dir === 'in') viewer.camera.zoomIn(amount); else viewer.camera.zoomOut(amount)
   }
 
   const handleSceneMode = (mode: '3d' | '2d' | 'columbus') => {

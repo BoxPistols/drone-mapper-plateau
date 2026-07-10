@@ -1,7 +1,9 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
+import { Cartographic } from 'cesium'
 import { droneSimBridge } from '../sim/droneSimBridge'
 import { buildFlightPhases, totalFlightMs, sampleAtElapsed } from '../sim/flightPath'
+import { cesiumViewerRef } from '../sim/cesiumViewerRef'
 import { generatePerimeterPoints, generateGridPoints } from '../utils/geoUtils'
 import type {
   CityConfig,
@@ -245,8 +247,14 @@ export const useDroneStore = create<DroneStore>()(
       updateWaypoint: (planId, wpId, patch) => {
         const plan = get().plans.find((p) => p.id === planId)
         if (!plan) return
+        // 数値フィールドの NaN を弾く（入力欄を空にすると Number('')=0, 途中入力で NaN になり
+        // シミュレーションが凍結・表示が壊れるのを防ぐ）
+        const clean: Partial<Waypoint> = { ...patch }
+        for (const key of ['altAGL', 'speedMS', 'hoverSec', 'groundAlt'] as const) {
+          if (key in clean && !Number.isFinite(clean[key] as number)) delete clean[key]
+        }
         get().updatePlan(planId, {
-          waypoints: plan.waypoints.map((w) => (w.id === wpId ? { ...w, ...patch } : w)),
+          waypoints: plan.waypoints.map((w) => (w.id === wpId ? { ...w, ...clean } : w)),
         })
       },
       deleteWaypoint: (planId, wpId) => {
@@ -313,14 +321,18 @@ export const useDroneStore = create<DroneStore>()(
           return
         }
 
-        // 既存WPの後に追加
+        // 既存WPの後に追加。地盤高(MSL)を地形からサンプリングして
+        // クリック追加WP（addWaypoint）と同じ座標系に揃える。
+        // groundAlt:0 のままだと WPマーカー・ルート線・高度バーが地形を無視して沈む/浮く。
+        const globe = cesiumViewerRef.current?.scene.globe
         const wps = [...plan.waypoints]
         for (const [lon, lat] of points) {
+          const groundAlt = globe?.getHeight(Cartographic.fromDegrees(lon, lat)) ?? 0
           wps.push({
             id: uid(),
             lon, lat,
             altAGL: opts.altAGL,
-            groundAlt: 0,
+            groundAlt,
             speedMS: opts.speedMS,
             action: 'none' as const,
           })

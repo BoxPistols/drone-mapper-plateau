@@ -5,6 +5,7 @@
  * 企画・ビジネスチーム: ナラティブコピー・達成感演出
  */
 import { useEffect, useState } from 'react'
+import { useModalA11y } from '../hooks/useModalA11y'
 import type { FlightPlan } from '../types'
 
 interface Props {
@@ -48,6 +49,7 @@ function fmtTime(sec: number) {
 export function MissionComplete({ plan, distM, totalSec, maxAlt, photoCount, onReplay, onClose }: Props) {
   const [visible, setVisible] = useState(false)
   const msg = getMissionMessage(distM, maxAlt)
+  const ref = useModalA11y<HTMLDivElement>(onClose)
 
   useEffect(() => {
     // マウント直後は透明から始めてフェードイン
@@ -57,7 +59,13 @@ export function MissionComplete({ plan, distM, totalSec, maxAlt, photoCount, onR
 
   return (
     <div className={`mission-complete-overlay ${visible ? 'visible' : ''}`}>
-      <div className="mission-complete-card">
+      <div
+        ref={ref}
+        className="mission-complete-card"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="mc-title"
+      >
         {/* 上部グリーンビーム */}
         <div className="mc-beam" />
 
@@ -96,7 +104,7 @@ export function MissionComplete({ plan, distM, totalSec, maxAlt, photoCount, onR
         {/* タイトル */}
         <div className="mc-title-area">
           <p className="mc-label">MISSION COMPLETE</p>
-          <h2 className="mc-title">{msg.title}</h2>
+          <h2 className="mc-title" id="mc-title">{msg.title}</h2>
           <p className="mc-plan-name">{plan.name}</p>
         </div>
 

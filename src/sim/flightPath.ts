@@ -9,6 +9,15 @@ import type { Waypoint } from '../types'
 // 弧長テーブルの分割数。スプライン曲線長と時間→位置変換の精度を決める
 const ARC_SAMPLES = 32
 
+// 速度の下限 (m/s)。UIで速度フィールドを空にすると Number('')===0 になり、
+// lengthM/0 = Infinity で totalMs が発散→進捗が常に0でシミュが凍結する。
+// NaN・負値も含めて安全な正の値にクランプする。
+const MIN_SPEED_MS = 0.1
+
+function safeSpeed(speedMS: number): number {
+  return Number.isFinite(speedMS) && speedMS >= MIN_SPEED_MS ? speedMS : MIN_SPEED_MS
+}
+
 export type FlightPhase =
   | { type: 'fly'; segIdx: number; durationMs: number; lengthM: number; cumLenM: number[] }
   | { type: 'hover'; wpIdx: number; durationMs: number }
@@ -72,7 +81,7 @@ export function buildFlightPhases(wps: Waypoint[]): FlightPhase[] {
     const lengthM = cumLenM[ARC_SAMPLES]
     phases.push({
       type: 'fly', segIdx: i, lengthM, cumLenM,
-      durationMs: Math.max((lengthM / wps[i].speedMS) * 1000, 1),
+      durationMs: Math.max((lengthM / safeSpeed(wps[i].speedMS)) * 1000, 1),
     })
     // 最終WPのホバーは意味がないので除外
     const b = wps[i + 1]
@@ -89,6 +98,38 @@ export function totalFlightMs(phases: FlightPhase[]): number {
 
 export function totalFlightDistanceM(phases: FlightPhase[]): number {
   return phases.reduce((sum, p) => sum + (p.type === 'fly' ? p.lengthM : 0), 0)
+}
+
+export interface FlightStats {
+  /** 総飛行距離 m（スプライン弧長） */
+  distM: number
+  /** 総所要時間 ms（速度=1x, ホバー含む） */
+  totalMs: number
+  /** 最大高度 m AGL */
+  maxAlt: number
+  /** 撮影ポイント数（写真・動画開始） */
+  photoCount: number
+}
+
+/**
+ * 飛行統計を1箇所で算出する（統計は PlansPanel・MissionComplete で共有）。
+ * 距離は弧長・時間はフェーズ合計。撮影ポイントの定義もここで一意に決める。
+ */
+export function computeFlightStats(wps: Waypoint[]): FlightStats | null {
+  if (wps.length < 2) return null
+  const phases = buildFlightPhases(wps)
+  let maxAlt = 0
+  let photoCount = 0
+  for (const wp of wps) {
+    if (wp.altAGL > maxAlt) maxAlt = wp.altAGL
+    if (wp.action === 'photo' || wp.action === 'video_start') photoCount++
+  }
+  return {
+    distM: totalFlightDistanceM(phases),
+    totalMs: totalFlightMs(phases),
+    maxAlt,
+    photoCount,
+  }
 }
 
 // 弧長 dist に対応するスプラインパラメータ t を累積長テーブルから逆引き
@@ -117,7 +158,7 @@ export function sampleAtElapsed(wps: Waypoint[], phases: FlightPhase[], elapsedM
         // 時間割合 → 移動距離 → 弧長テーブルで t に変換（曲線上でも等速）
         const t = tForDistance(phase.cumLenM, frac * phase.lengthM)
         const s = splineSample(wps, phase.segIdx, t)
-        return { ...s, speedMS: wps[phase.segIdx].speedMS, wpNumber: phase.segIdx + 2, hovering: false }
+        return { ...s, speedMS: safeSpeed(wps[phase.segIdx].speedMS), wpNumber: phase.segIdx + 2, hovering: false }
       }
       // ホバー: WPに静止。方位は直前セグメント終端の進行方向で確定（シーク後も安定）
       const wp = wps[phase.wpIdx]

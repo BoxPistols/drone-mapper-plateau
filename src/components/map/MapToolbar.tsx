@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { useDroneStore } from '../../store/droneStore'
 import type { MapMode } from '../../types'
 
@@ -31,8 +32,15 @@ const TOOLS: { mode: MapMode; label: string; sub: string; icon: string }[] = [
 export function MapToolbar() {
   const { mapMode, setMapMode, drawingZonePoints, commitZone, resetDrawingPoints, activePlanId, plans } =
     useDroneStore()
+  const [zoneName, setZoneName] = useState('')
 
   const activePlan = plans.find((p) => p.id === activePlanId)
+
+  const handleCommitZone = () => {
+    // prompt() はモバイルwebviewで抑制されうるためインライン入力に変更
+    commitZone(zoneName.trim() || '飛行エリア', 'planned')
+    setZoneName('')
+  }
 
   return (
     <div className="map-toolbar">
@@ -68,20 +76,23 @@ export function MapToolbar() {
           )}
           {drawingZonePoints.length >= 3 && (
             <>
-              <span className="zone-guide-text">{drawingZonePoints.length}点 — ダブルクリックで確定</span>
-              <button
-                className="zone-commit-btn"
-                onClick={() => {
-                  const name = prompt('このエリアの名前を入力してください', '飛行エリア') ?? '飛行エリア'
-                  commitZone(name, 'planned')
-                }}
-              >
+              <span className="zone-guide-text">{drawingZonePoints.length}点 — 名前を付けて確定</span>
+              <input
+                className="zone-name-input"
+                value={zoneName}
+                onChange={(e) => setZoneName(e.target.value)}
+                onKeyDown={(e) => { if (e.key === 'Enter' && !e.nativeEvent.isComposing) handleCommitZone() }}
+                placeholder="飛行エリア"
+                aria-label="エリア名"
+                autoFocus
+              />
+              <button className="zone-commit-btn" onClick={handleCommitZone}>
                 ✓ 確定する
               </button>
             </>
           )}
           {drawingZonePoints.length > 0 && (
-            <button className="zone-cancel-btn" onClick={() => { resetDrawingPoints(); setMapMode('select') }}>
+            <button className="zone-cancel-btn" onClick={() => { resetDrawingPoints(); setMapMode('select'); setZoneName('') }}>
               やり直す
             </button>
           )}

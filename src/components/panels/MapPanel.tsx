@@ -1,15 +1,9 @@
 import { useState } from 'react'
 import { useDroneStore, PLATEAU_CITIES } from '../../store/droneStore'
+import { ZONE_TYPE_LABELS } from '../../constants/labels'
 import type { ZoneType } from '../../types'
 
 const PIN_COLORS = ['#58a6ff', '#f78166', '#7ee787', '#ffa657', '#d2a8ff', '#ff7b72', '#79c0ff', '#ffffff']
-
-const ZONE_TYPE_LABELS: Record<ZoneType, string> = {
-  planned:    '飛行予定エリア',
-  restricted: '飛行禁止区域',
-  caution:    '注意が必要なエリア',
-  completed:  '飛行済みエリア',
-}
 
 export function MapPanel() {
   const {

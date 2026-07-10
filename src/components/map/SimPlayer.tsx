@@ -1,19 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useDroneStore } from '../../store/droneStore'
 import { droneSimBridge } from '../../sim/droneSimBridge'
-import { buildFlightPhases, sampleAtElapsed, totalFlightDistanceM, type FlightPhase, type FlightSample } from '../../sim/flightPath'
+import { buildFlightPhases, sampleAtElapsed, computeFlightStats, type FlightSample } from '../../sim/flightPath'
 import { MissionComplete } from '../MissionComplete'
-import type { CameraMode, Waypoint } from '../../types'
-
-// フライト統計（距離はスプライン弧長 = 実際の飛行距離）
-function calcFlightStats(wps: Waypoint[], phases: FlightPhase[]) {
-  let maxAlt = 0, photoCount = 0
-  for (const wp of wps) {
-    if (wp.altAGL > maxAlt) maxAlt = wp.altAGL
-    if (wp.action === 'photo') photoCount++
-  }
-  return { distM: totalFlightDistanceM(phases), maxAlt, photoCount }
-}
+import { CAMERA_LABELS, CAMERA_DESCRIPTIONS } from '../../constants/labels'
+import { isEditableTarget } from '../../utils/domUtils'
+import type { CameraMode } from '../../types'
 
 // サンプル値を droneSimBridge に書き込む（SimEngine → Camera3D への唯一の経路）
 function writeBridge(s: FlightSample) {
@@ -31,7 +23,8 @@ export function SimPlayer() {
   // ── Space キー: 再生 / 一時停止 ──
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.code !== 'Space' || e.target !== document.body) return
+      // 入力欄でのスペースは奪わない。ボタンにフォーカスがあっても再生/一時停止は効かせる
+      if (e.code !== 'Space' || isEditableTarget(e.target)) return
       e.preventDefault()
       const sim = useDroneStore.getState().simulation
       if (!sim) return
@@ -90,7 +83,7 @@ export function SimPlayer() {
     }
     rafRef.current = requestAnimationFrame(tick)
     return () => { if (rafRef.current) cancelAnimationFrame(rafRef.current) }
-  }, [simulation?.playing, simulation?.planId, simulation?.speed, plans]) // eslint-disable-line
+  }, [simulation?.playing, simulation?.planId, simulation?.speed, plans])
 
   const plan = plans.find((p) => p.id === simulation?.planId)
   // WP編集で参照が変わった時だけ弧長テーブルを再構築
@@ -114,12 +107,6 @@ export function SimPlayer() {
   const currentAlt = hudSample?.altAGL ?? 0
   const currentSpd = hudSample?.speedMS ?? 0
   const currentWp  = hudSample?.wpNumber ?? 1
-
-  const CAMERA_LABELS: Record<CameraMode, string> = {
-    free:   '俯瞰',      // 自由にカメラを動かせる（マウス/タッチで操作）
-    follow: '追跡',      // ドローンを後方から追いかける
-    pov:    '機体視点',  // ドローンが見ている映像（前方カメラ）
-  }
 
   const handlePlayPause = () => {
     if (simulation.playing) {
@@ -165,8 +152,9 @@ export function SimPlayer() {
   }
 
   // ── ミッション完了演出 ──────────────────────────
-  if (missionDone && plan && hudPhases) {
-    const { distM, maxAlt: statMaxAlt, photoCount } = calcFlightStats(wps, hudPhases)
+  const missionStats = missionDone && plan ? computeFlightStats(wps) : null
+  if (missionDone && plan && hudPhases && missionStats) {
+    const { distM, maxAlt: statMaxAlt, photoCount } = missionStats
     return (
       <MissionComplete
         plan={plan}
@@ -215,17 +203,14 @@ export function SimPlayer() {
         <div className="hud-divider" />
 
         {/* カメラモード */}
-        <div className="hud-cam-group">
+        <div className="hud-cam-group" role="group" aria-label="カメラ視点">
           {(['free', 'follow', 'pov'] as CameraMode[]).map((mode) => (
             <button
               key={mode}
               className={`hud-cam-btn ${simulation.cameraMode === mode ? 'active' : ''}`}
               onClick={() => setSimulation({ cameraMode: mode })}
-              title={{
-                free:   '俯瞰 — マウスやタッチで自由に地図を動かせます',
-                follow: '追跡 — ドローンを後ろから追いかけます',
-                pov:    '機体視点 — ドローンの前方カメラ映像です',
-              }[mode]}
+              aria-pressed={simulation.cameraMode === mode}
+              title={CAMERA_DESCRIPTIONS[mode]}
             >
               {CAMERA_LABELS[mode]}
             </button>
@@ -238,7 +223,11 @@ export function SimPlayer() {
         {/* シーカー */}
         <div className="sim-seek-wrap">
           <span className="sim-time-label">{fmt(elapsedSec)}</span>
-          <input type="range" min="0" max="100" value={pct} className="sim-seek" onChange={handleSeek} />
+          <input
+            type="range" min="0" max="100" value={pct} className="sim-seek" onChange={handleSeek}
+            aria-label="再生位置"
+            aria-valuetext={`${fmt(elapsedSec)} / ${fmt(totalSec)}`}
+          />
           <span className="sim-time-label sim-time-total">{fmt(totalSec)}</span>
         </div>
 
@@ -251,6 +240,7 @@ export function SimPlayer() {
                 key={s}
                 className={`sim-speed-btn ${simulation.speed === s ? 'active' : ''}`}
                 onClick={() => handleSpeedChange(s)}
+                aria-pressed={simulation.speed === s}
                 title={s === 1 ? '通常速度' : `${s}倍速`}
               >{s}×</button>
             ))}

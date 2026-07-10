@@ -292,11 +292,23 @@
   background: var(--border); border-radius: 3px; outline: none;
   cursor: pointer;
 }
+/* キーボードフォーカス時のみリング表示（マウス操作では出さない） */
+.sim-seek:focus-visible {
+  outline: 2px solid var(--accent); outline-offset: 4px;
+}
 .sim-seek::-webkit-slider-thumb {
   -webkit-appearance: none;
   width: 16px; height: 16px; border-radius: 50%;
   background: var(--success); border: 2px solid #fff;
   box-shadow: 0 1px 6px rgba(22,163,74,0.4);
+}
+
+/* ゾーン名インライン入力（prompt() の置き換え） */
+.zone-name-input {
+  font-size: 13px; padding: 6px 10px; min-height: 38px;
+  border: 1.5px solid var(--border); border-radius: 8px;
+  background: var(--bg-elevated); color: var(--text);
+  width: 140px; max-width: 40vw;
 }
 
 .sim-controls {

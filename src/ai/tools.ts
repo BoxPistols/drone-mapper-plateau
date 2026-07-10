@@ -4,6 +4,7 @@
  */
 import type OpenAI from 'openai'
 import { useDroneStore, PLATEAU_CITIES } from '../store/droneStore'
+import { coerceWaypointAction } from '../constants/labels'
 
 // ── ツール定義（OpenAI に渡すスキーマ）────────────────────────────────
 export const AI_TOOLS: OpenAI.ChatCompletionTool[] = [
@@ -167,7 +168,8 @@ export function executeTool(name: string, input: Record<string, unknown>): ToolR
         if (last) {
           store.updateWaypoint(planId, last.id, {
             altAGL: wp.altAGL,
-            action: (wp.action as never) ?? 'none',
+            // モデル出力の未検証文字列を安全に列挙型へ変換（不正値は 'none'）
+            action: coerceWaypointAction(wp.action),
           })
         }
       }

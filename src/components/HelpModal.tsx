@@ -1,14 +1,25 @@
+import { useModalA11y } from '../hooks/useModalA11y'
+import { CAMERA_LABELS } from '../constants/labels'
+
 interface Props {
   onClose: () => void
 }
 
 export function HelpModal({ onClose }: Props) {
+  const ref = useModalA11y<HTMLDivElement>(onClose)
   return (
     <div className="modal-overlay" onClick={onClose}>
-      <div className="modal-panel help-modal" onClick={(e) => e.stopPropagation()}>
+      <div
+        ref={ref}
+        className="modal-panel help-modal"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="help-modal-title"
+        onClick={(e) => e.stopPropagation()}
+      >
         <div className="modal-header">
-          <h2>DroneMapper の使い方</h2>
-          <button className="modal-close" onClick={onClose}>×</button>
+          <h2 id="help-modal-title">DroneMapper の使い方</h2>
+          <button className="modal-close" aria-label="閉じる" onClick={onClose}>×</button>
         </div>
 
         <div className="help-content">
@@ -83,15 +94,15 @@ export function HelpModal({ onClose }: Props) {
                   <td>再生速度を変えられます</td>
                 </tr>
                 <tr>
-                  <td><b>カメラ: 自由</b></td>
+                  <td><b>カメラ: {CAMERA_LABELS.free}</b></td>
                   <td>地図を自分で動かして見られます</td>
                 </tr>
                 <tr>
-                  <td><b>カメラ: 追いかける</b></td>
+                  <td><b>カメラ: {CAMERA_LABELS.follow}</b></td>
                   <td>ドローンを後ろから追いかけます</td>
                 </tr>
                 <tr>
-                  <td><b>カメラ: ドローン視点</b></td>
+                  <td><b>カメラ: {CAMERA_LABELS.pov}</b></td>
                   <td>ドローンの目線で見られます</td>
                 </tr>
               </tbody>

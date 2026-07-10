@@ -2,6 +2,8 @@ import { useState } from 'react'
 import { useDroneStore } from '../../store/droneStore'
 import { PreflightChecklist } from '../PreflightChecklist'
 import { useNominatimSearch } from '../../hooks/useNominatimSearch'
+import { computeFlightStats } from '../../sim/flightPath'
+import { ACTION_LABELS, ACTION_BADGES } from '../../constants/labels'
 import type { FlightPlan, Waypoint, WaypointAction, PlanStatus } from '../../types'
 
 const STATUS_LABELS: Record<PlanStatus, string> = {
@@ -10,41 +12,7 @@ const STATUS_LABELS: Record<PlanStatus, string> = {
   completed: '完了',
 }
 
-const ACTION_LABELS: Record<WaypointAction, string> = {
-  none:        'なし',
-  photo:       '写真を撮る',
-  video_start: '動画撮影を開始',
-  video_stop:  '動画撮影を停止',
-  hover:       'その場で停止',
-}
-
-const ACTION_BADGES: Record<WaypointAction, string> = {
-  none:        '',
-  photo:       '📷',
-  video_start: '🎬',
-  video_stop:  '⏹',
-  hover:       '⏸',
-}
-
-// ── 飛行統計の計算 ────────────────────────────
-function calcStats(wps: Waypoint[]) {
-  if (wps.length < 2) return null
-  let distM = 0, totalMs = 0
-  let photoCount = 0
-  const maxAlt = Math.max(...wps.map((w) => w.altAGL))
-  for (let i = 0; i < wps.length - 1; i++) {
-    const a = wps[i], b = wps[i + 1]
-    const dx = (b.lon - a.lon) * 111320 * Math.cos((a.lat * Math.PI) / 180)
-    const dy = (b.lat - a.lat) * 110540
-    const dz = b.altAGL - a.altAGL
-    const d = Math.sqrt(dx * dx + dy * dy + dz * dz)
-    distM += d
-    totalMs += Math.max((d / a.speedMS) * 1000, 1)
-    if (b.action === 'hover' && b.hoverSec && i < wps.length - 2) totalMs += b.hoverSec * 1000
-    if (b.action === 'photo' || b.action === 'video_start') photoCount++
-  }
-  return { distM, totalMs, maxAlt, photoCount }
-}
+// 飛行統計は sim/flightPath.computeFlightStats に一本化（弧長ベースで実飛行と一致）
 
 function fmtTime(ms: number) {
   const s = Math.round(ms / 1000)
@@ -319,7 +287,7 @@ function PlanDetail({ plan, onBack }: PlanDetailProps) {
 
   const isActive = activePlanId === plan.id
   const isSimulating = simulation?.planId === plan.id
-  const stats = calcStats(plan.waypoints)
+  const stats = computeFlightStats(plan.waypoints)
   const hasOverLimit = plan.waypoints.some((w) => w.altAGL > 150)
 
   const handleSimStart = () => {
@@ -595,14 +563,18 @@ function PlanDetail({ plan, onBack }: PlanDetailProps) {
         <section className="panel-section plan-actions">
           <button
             className={`action-btn sim-btn ${isSimulating ? 'active' : ''}`}
-            disabled={plan.waypoints.length < 2}
+            disabled={plan.waypoints.length < 2 || isSimulating}
             onClick={handleSimStart}
-            title={plan.waypoints.length < 2 ? '通過ポイントを2つ以上追加してください' : ''}
+            title={
+              isSimulating ? 'すでにシミュレーション中です'
+                : plan.waypoints.length < 2 ? '通過ポイントを2つ以上追加してください' : ''
+            }
           >
             <svg viewBox="0 0 24 24" fill="currentColor">
               <path d="M8 5v14l11-7z"/>
             </svg>
-            {plan.waypoints.length < 2 ? '2ポイント以上必要' : 'シミュレーション'}
+            {isSimulating ? 'シミュレーション中'
+              : plan.waypoints.length < 2 ? '2ポイント以上必要' : 'シミュレーション'}
           </button>
 
           <button
@@ -714,7 +686,7 @@ export function PlansPanel() {
       ) : (
         <ul className="item-list plan-list">
           {plans.map((plan) => {
-            const stats = calcStats(plan.waypoints)
+            const stats = computeFlightStats(plan.waypoints)
             const overLimit = plan.waypoints.some((w) => w.altAGL > 150)
             return (
               <li
