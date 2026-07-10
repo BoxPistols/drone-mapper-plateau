@@ -152,8 +152,8 @@ export function CesiumMap() {
   const droneEntityRef = useRef<Entity | null>(null)
   const preRenderRemoveRef = useRef<(() => void) | null>(null)
   const overlayRef = useRef<HTMLDivElement>(null)
-  const prevHeadingRef = useRef(0)         // POVバンキング計算用
-  const smoothBankRef  = useRef(0)         // バンク角のスムーシング状態
+  const smoothHeadingRef = useRef(0)       // POV/追跡カメラのヘディング平滑状態 (rad)
+  const smoothBankRef    = useRef(0)       // バンク角のスムーシング状態
 
   const store = useDroneStore()
 
@@ -671,7 +671,10 @@ export function CesiumMap() {
         width: 48, height: 48,
         verticalOrigin: VerticalOrigin.CENTER,
         disableDepthTestDistance: Number.POSITIVE_INFINITY,
-        rotation: new CallbackProperty(() => (Date.now() / 500) % (Math.PI * 2), false) as never,
+        // 機首インジケーターを実際の飛行方位に向ける（billboard回転はスクリーン空間・反時計回り正）
+        rotation: new CallbackProperty(
+          () => viewer.camera.heading - CesiumMath.toRadians(droneSimBridge.heading), false
+        ) as never,
         show: droneVisible as never,
       },
       label: {
@@ -711,9 +714,15 @@ export function CesiumMap() {
 
     // ─ シミュレーション開始直後: 初期ヘディングでカメラを即座に配置
     // （最初のRAFティックまでの数フレームで誤方向を向かないようにする）
-    prevHeadingRef.current = CesiumMath.toRadians(droneSimBridge.heading)
+    smoothHeadingRef.current = CesiumMath.toRadians(droneSimBridge.heading)
     smoothBankRef.current = 0
-    const initPos = Cartesian3.fromDegrees(droneSimBridge.lon, droneSimBridge.lat, droneSimBridge.altAGL + 2)
+    // 地盤高(MSL)を加えないと地形の高い都市でカメラが地中に潜る
+    const initCarto = Cartographic.fromDegrees(droneSimBridge.lon, droneSimBridge.lat)
+    droneSimBridge.groundAlt = viewer.scene.globe.getHeight(initCarto) ?? droneSimBridge.groundAlt
+    const initPos = Cartesian3.fromDegrees(
+      droneSimBridge.lon, droneSimBridge.lat,
+      droneSimBridge.groundAlt + droneSimBridge.altAGL,
+    )
     viewer.camera.setView({
       destination: initPos,
       orientation: { heading: CesiumMath.toRadians(droneSimBridge.heading), pitch: CesiumMath.toRadians(-18), roll: 0 },
@@ -733,15 +742,21 @@ export function CesiumMap() {
         droneSimBridge.lat,
         droneSimBridge.groundAlt + droneSimBridge.altAGL,
       )
-      const headingRad = CesiumMath.toRadians(droneSimBridge.heading)
+      const targetHeading = CesiumMath.toRadians(droneSimBridge.heading)
 
-      // カメラモード切替検知: POV 入場時にバンキング状態をリセット
+      // カメラモード切替検知: POV/追跡 入場時にスムーシング状態をリセット
       const prevMode = droneSimBridge.cameraMode
       droneSimBridge.cameraMode = sim.cameraMode
-      if (sim.cameraMode === 'pov' && prevMode !== 'pov') {
-        prevHeadingRef.current = headingRad
+      if (sim.cameraMode !== prevMode && sim.cameraMode !== 'free') {
+        smoothHeadingRef.current = targetHeading
         smoothBankRef.current = 0
       }
+
+      // ヘディングは最短弧の指数平滑（lerp）で追従 — ホバー明けの方位ジャンプも滑らかに
+      const rawDiff = targetHeading - smoothHeadingRef.current
+      const headingDiff = rawDiff - Math.round(rawDiff / (Math.PI * 2)) * (Math.PI * 2)
+      smoothHeadingRef.current += headingDiff * 0.12
+      const headingRad = smoothHeadingRef.current
 
       if (sim.cameraMode === 'follow') {
         // 追跡: ドローンの真後ろにカメラを置き、前方（進行方向）を向く
@@ -766,14 +781,10 @@ export function CesiumMap() {
         })
       } else if (sim.cameraMode === 'pov') {
         // POV: ドローン視点 — バンキング付き（映画的旋回演出）
-        // heading の変化率からバンク角を算出し、指数平滑でスムーシング
-        const rawDelta = headingRad - prevHeadingRef.current
-        // -π〜+π に正規化
-        const delta = rawDelta - Math.round(rawDelta / (Math.PI * 2)) * (Math.PI * 2)
-        const targetBank = Math.max(-0.35, Math.min(0.35, delta * 8))  // ±20° 上限
+        // 平滑ヘディングと目標方位の差 = 旋回の強さ としてバンク角を算出
+        const targetBank = Math.max(-0.35, Math.min(0.35, headingDiff * 1.2))  // ±20° 上限
         // α=0.15 の指数平滑（急旋回でも滑らか）
         smoothBankRef.current = smoothBankRef.current * 0.85 + targetBank * 0.15
-        prevHeadingRef.current = headingRad
 
         viewer.camera.setView({
           destination: pos,
@@ -796,6 +807,14 @@ export function CesiumMap() {
       removeCameraListener()
       preRenderRemoveRef.current = null
       droneSimBridge.active = false
+      // POVのバンク角が残ると通常操作時に地平線が傾いたままになる
+      const cam = viewerRef.current?.camera
+      if (cam && Math.abs(cam.roll) > 1e-4) {
+        cam.setView({
+          destination: cam.position,
+          orientation: { heading: cam.heading, pitch: cam.pitch, roll: 0 },
+        })
+      }
     }
   }, [store.simulation?.planId]) // planIdが変わった時だけエンティティを再生成
 

@@ -1,39 +1,26 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useDroneStore } from '../../store/droneStore'
 import { droneSimBridge } from '../../sim/droneSimBridge'
-import { catmullRom, catmullRomTangent, mirrorPoint } from '../../sim/spline'
+import { buildFlightPhases, sampleAtElapsed, totalFlightDistanceM, type FlightPhase, type FlightSample } from '../../sim/flightPath'
 import { MissionComplete } from '../MissionComplete'
 import type { CameraMode, Waypoint } from '../../types'
 
-// フライト統計を計算するユーティリティ
-function calcFlightStats(wps: ReturnType<typeof useDroneStore.getState>['plans'][0]['waypoints']) {
-  let distM = 0, maxAlt = 0, photoCount = 0
-  for (let i = 0; i < wps.length; i++) {
-    if (wps[i].altAGL > maxAlt) maxAlt = wps[i].altAGL
-    if (wps[i].action === 'photo') photoCount++
-    if (i > 0) {
-      const a = wps[i - 1], b = wps[i]
-      const dx = (b.lon - a.lon) * 111320 * Math.cos((a.lat * Math.PI) / 180)
-      const dy = (b.lat - a.lat) * 110540
-      const dz = b.altAGL - a.altAGL
-      distM += Math.sqrt(dx * dx + dy * dy + dz * dz)
-    }
+// フライト統計（距離はスプライン弧長 = 実際の飛行距離）
+function calcFlightStats(wps: Waypoint[], phases: FlightPhase[]) {
+  let maxAlt = 0, photoCount = 0
+  for (const wp of wps) {
+    if (wp.altAGL > maxAlt) maxAlt = wp.altAGL
+    if (wp.action === 'photo') photoCount++
   }
-  return { distM, maxAlt, photoCount }
+  return { distM: totalFlightDistanceM(phases), maxAlt, photoCount }
 }
 
-// スプライン補間でドローン位置・heading を更新する共通関数
-function interpolateSpline(wps: Waypoint[], segIdx: number, frac: number) {
-  const p0 = segIdx > 0 ? wps[segIdx - 1] : mirrorPoint(wps[segIdx], wps[segIdx + 1])
-  const p1 = wps[segIdx]
-  const p2 = wps[segIdx + 1]
-  const p3 = segIdx + 2 < wps.length ? wps[segIdx + 2] : mirrorPoint(wps[segIdx + 1], wps[segIdx])
-  const pt = catmullRom(p0, p1, p2, p3, frac)
-  const tangent = catmullRomTangent(p0, p1, p2, p3, frac)
-  droneSimBridge.lon = pt.lon
-  droneSimBridge.lat = pt.lat
-  droneSimBridge.altAGL = pt.altAGL
-  droneSimBridge.heading = Math.atan2(tangent.lon, tangent.lat) * (180 / Math.PI)
+// サンプル値を droneSimBridge に書き込む（SimEngine → Camera3D への唯一の経路）
+function writeBridge(s: FlightSample) {
+  droneSimBridge.lon = s.lon
+  droneSimBridge.lat = s.lat
+  droneSimBridge.altAGL = s.altAGL
+  droneSimBridge.heading = s.heading
 }
 
 export function SimPlayer() {
@@ -53,11 +40,12 @@ export function SimPlayer() {
       } else {
         if (sim.progress >= 1.0) {
           const plan = useDroneStore.getState().plans.find((p) => p.id === sim.planId)
-          const w0 = plan?.waypoints[0]
-          if (w0) {
-            droneSimBridge.lon = w0.lon; droneSimBridge.lat = w0.lat
-            droneSimBridge.altAGL = w0.altAGL; droneSimBridge.active = true
+          const wps = plan?.waypoints
+          if (wps && wps.length >= 2) {
+            writeBridge(sampleAtElapsed(wps, buildFlightPhases(wps), 0))
+            droneSimBridge.active = true
           }
+          setMissionDone(false) // 完了画面が出たままリプレイされるのを防ぐ
           useDroneStore.getState().setSimulation({ playing: true, progress: 0, startedAt: Date.now() })
         } else {
           const remaining = sim.totalMs * (1 - sim.progress)
@@ -79,30 +67,8 @@ export function SimPlayer() {
     const plan = plans.find((p) => p.id === simulation.planId)
     if (!plan || plan.waypoints.length < 2) return
 
-    // ── フェーズ列: 飛行セグメント + ホバー停止 ──────────────
-    // フェーズを経過時間ベースで管理することで速度差・ホバーを正確に再現する
-    type Phase =
-      | { type: 'fly';   segIdx: number; durationMs: number }
-      | { type: 'hover'; wpIdx:  number; durationMs: number }
-
-    const buildPhases = (): Phase[] => {
-      const wps = plan.waypoints
-      const result: Phase[] = []
-      for (let i = 0; i < wps.length - 1; i++) {
-        const a = wps[i], b = wps[i + 1]
-        const dx = (b.lon - a.lon) * 111320 * Math.cos((a.lat * Math.PI) / 180)
-        const dy = (b.lat - a.lat) * 110540
-        const dz = b.altAGL - a.altAGL
-        const dist = Math.sqrt(dx * dx + dy * dy + dz * dz)
-        result.push({ type: 'fly', segIdx: i, durationMs: Math.max((dist / a.speedMS) * 1000, 1) })
-        // 最終WPのホバーは意味がないので除外
-        if (b.action === 'hover' && b.hoverSec && i < wps.length - 2) {
-          result.push({ type: 'hover', wpIdx: i + 1, durationMs: b.hoverSec * 1000 })
-        }
-      }
-      return result
-    }
-    const phases = buildPhases()
+    // フェーズ列（飛行 + ホバー）は flightPath に一本化。弧長ベースで等速飛行
+    const phases = buildFlightPhases(plan.waypoints)
 
     const tick = () => {
       const sim = useDroneStore.getState().simulation
@@ -110,36 +76,8 @@ export function SimPlayer() {
 
       const elapsed = (Date.now() - sim.startedAt) * sim.speed
       const progress = Math.min(elapsed / sim.totalMs, 1.0)
-      const wps = plan.waypoints
 
-      // ── elapsed からフェーズを特定して位置を補間 ──────
-      let cumMs = 0
-      let positioned = false
-      for (const phase of phases) {
-        if (elapsed < cumMs + phase.durationMs) {
-          const frac = Math.min((elapsed - cumMs) / phase.durationMs, 1)
-          if (phase.type === 'fly') {
-            interpolateSpline(wps, phase.segIdx, frac)
-          } else {
-            // ホバー: 対象WPで停止、heading は維持
-            const wp = wps[phase.wpIdx]
-            droneSimBridge.lon    = wp.lon
-            droneSimBridge.lat    = wp.lat
-            droneSimBridge.altAGL = wp.altAGL
-          }
-          positioned = true
-          break
-        }
-        cumMs += phase.durationMs
-      }
-      if (!positioned) {
-        // 終端: 最終WPに固定
-        const last = wps[wps.length - 1]
-        droneSimBridge.lon    = last.lon
-        droneSimBridge.lat    = last.lat
-        droneSimBridge.altAGL = last.altAGL
-      }
-
+      writeBridge(sampleAtElapsed(plan.waypoints, phases, elapsed))
       useDroneStore.getState().setSimulation({ progress })
 
       if (progress >= 1.0) {
@@ -154,23 +92,28 @@ export function SimPlayer() {
     return () => { if (rafRef.current) cancelAnimationFrame(rafRef.current) }
   }, [simulation?.playing, simulation?.planId, simulation?.speed, plans]) // eslint-disable-line
 
+  const plan = plans.find((p) => p.id === simulation?.planId)
+  // WP編集で参照が変わった時だけ弧長テーブルを再構築
+  const hudPhases = useMemo(
+    () => (plan && plan.waypoints.length >= 2 ? buildFlightPhases(plan.waypoints) : null),
+    [plan]
+  )
+
   if (!simulation) return null
 
-  const plan = plans.find((p) => p.id === simulation.planId)
   const pct = Math.round(simulation.progress * 100)
   const totalSec = simulation.totalMs / simulation.speed / 1000
   const elapsedSec = totalSec * simulation.progress
   const fmt = (s: number) => `${Math.floor(s / 60)}分${String(Math.floor(s % 60)).padStart(2, '0')}秒`
 
-  // 現在セグメントから数値を取得
+  // HUD 数値: tick と同じフェーズ定義からサンプリング（セグメント等分割は禁止）
   const wps = plan?.waypoints ?? []
-  const segProgress = simulation.progress * Math.max(wps.length - 1, 1)
-  const segIdx = Math.min(Math.floor(segProgress), wps.length - 2)
-  const frac = segProgress - segIdx
-  const wpA = wps[segIdx], wpB = wps[segIdx + 1] ?? wps[segIdx]
-  const currentAlt = wpA ? wpA.altAGL + ((wpB?.altAGL ?? wpA.altAGL) - wpA.altAGL) * frac : 0
-  const currentSpd = wpA?.speedMS ?? 0
-  const currentWp  = Math.min(segIdx + 2, wps.length)
+  const hudSample = hudPhases
+    ? sampleAtElapsed(wps, hudPhases, simulation.progress * simulation.totalMs)
+    : null
+  const currentAlt = hudSample?.altAGL ?? 0
+  const currentSpd = hudSample?.speedMS ?? 0
+  const currentWp  = hudSample?.wpNumber ?? 1
 
   const CAMERA_LABELS: Record<CameraMode, string> = {
     free:   '俯瞰',      // 自由にカメラを動かせる（マウス/タッチで操作）
@@ -184,9 +127,9 @@ export function SimPlayer() {
     } else {
       // 完了済みの場合は先頭からリプレイ
       if (simulation.progress >= 1.0) {
-        if (wps[0]) {
-          droneSimBridge.lon = wps[0].lon; droneSimBridge.lat = wps[0].lat
-          droneSimBridge.altAGL = wps[0].altAGL; droneSimBridge.active = true
+        if (hudPhases) {
+          writeBridge(sampleAtElapsed(wps, hudPhases, 0))
+          droneSimBridge.active = true
         }
         setMissionDone(false)
         setSimulation({ playing: true, progress: 0, startedAt: Date.now() })
@@ -205,59 +148,25 @@ export function SimPlayer() {
 
   const handleSeek = (e: React.ChangeEvent<HTMLInputElement>) => {
     const progress = parseFloat(e.target.value) / 100
-    if (!plan) return
-    const wps = plan.waypoints
-    const targetElapsed = simulation.totalMs * progress
-
-    // フェーズ列ベースでシーク位置を計算（tick と同じロジック）
-    type SPhase =
-      | { type: 'fly';   segIdx: number; durationMs: number }
-      | { type: 'hover'; wpIdx:  number; durationMs: number }
-    const phases2: SPhase[] = []
-    for (let i = 0; i < wps.length - 1; i++) {
-      const a = wps[i], b = wps[i + 1]
-      const dx = (b.lon - a.lon) * 111320 * Math.cos((a.lat * Math.PI) / 180)
-      const dy = (b.lat - a.lat) * 110540
-      const dz = b.altAGL - a.altAGL
-      const dist = Math.sqrt(dx * dx + dy * dy + dz * dz)
-      phases2.push({ type: 'fly', segIdx: i, durationMs: Math.max((dist / a.speedMS) * 1000, 1) })
-      if (b.action === 'hover' && b.hoverSec && i < wps.length - 2) {
-        phases2.push({ type: 'hover', wpIdx: i + 1, durationMs: b.hoverSec * 1000 })
-      }
-    }
-
-    let cumMs = 0
-    for (const phase of phases2) {
-      if (targetElapsed < cumMs + phase.durationMs) {
-        const frac = Math.min((targetElapsed - cumMs) / phase.durationMs, 1)
-        if (phase.type === 'fly') {
-          interpolateSpline(wps, phase.segIdx, frac)
-        } else {
-          const wp = wps[phase.wpIdx]
-          droneSimBridge.lon    = wp.lon
-          droneSimBridge.lat    = wp.lat
-          droneSimBridge.altAGL = wp.altAGL
-        }
-        break
-      }
-      cumMs += phase.durationMs
-    }
+    if (!plan || !hudPhases) return
+    // tick と同一のフェーズ定義でシーク位置を確定
+    writeBridge(sampleAtElapsed(plan.waypoints, hudPhases, simulation.totalMs * progress))
     droneSimBridge.active = true
     setSimulation({ progress, playing: false, startedAt: Date.now() - (simulation.totalMs * progress) / simulation.speed })
   }
 
   const handleReset = () => {
-    if (wps[0]) {
-      droneSimBridge.lon = wps[0].lon; droneSimBridge.lat = wps[0].lat
-      droneSimBridge.altAGL = wps[0].altAGL; droneSimBridge.active = true
+    if (hudPhases) {
+      writeBridge(sampleAtElapsed(wps, hudPhases, 0))
+      droneSimBridge.active = true
     }
     setMissionDone(false)
     setSimulation({ progress: 0, playing: false, startedAt: Date.now() })
   }
 
   // ── ミッション完了演出 ──────────────────────────
-  if (missionDone && plan) {
-    const { distM, maxAlt: statMaxAlt, photoCount } = calcFlightStats(wps)
+  if (missionDone && plan && hudPhases) {
+    const { distM, maxAlt: statMaxAlt, photoCount } = calcFlightStats(wps, hudPhases)
     return (
       <MissionComplete
         plan={plan}
@@ -266,10 +175,8 @@ export function SimPlayer() {
         maxAlt={statMaxAlt}
         photoCount={photoCount}
         onReplay={() => {
-          if (wps[0]) {
-            droneSimBridge.lon = wps[0].lon; droneSimBridge.lat = wps[0].lat
-            droneSimBridge.altAGL = wps[0].altAGL; droneSimBridge.active = true
-          }
+          writeBridge(sampleAtElapsed(wps, hudPhases, 0))
+          droneSimBridge.active = true
           setMissionDone(false)
           setSimulation({ playing: true, progress: 0, startedAt: Date.now() })
         }}
