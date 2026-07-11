@@ -144,6 +144,7 @@ export function CesiumMap() {
   const containerRef = useRef<HTMLDivElement>(null)
   const viewerRef = useRef<Viewer | null>(null)
   const [sceneMode, setSceneMode] = useState<'3d' | '2d' | 'columbus'>('3d')
+  const [tilesRetry, setTilesRetry] = useState(0)  // 3D Tiles 読み込み再試行トリガー
   const tilesetRef = useRef<Cesium3DTileset | null>(null)
   const selectedFeatureRef = useRef<Cesium3DTileFeature | null>(null)
   const handlerRef = useRef<ScreenSpaceEventHandler | null>(null)
@@ -258,14 +259,26 @@ export function CesiumMap() {
         if (overlayRef.current) overlayRef.current.style.display = 'none'
       })
       .catch((e) => {
+        // 一時的なネットワーク断で復帰不能にならないよう再試行ボタンを出す
         if (overlayRef.current) {
-          overlayRef.current.innerHTML = `<p style="color:#f85149;font-size:13px">読み込み失敗</p><small style="color:#8b949e;font-size:10px">${e}</small>`
+          overlayRef.current.textContent = ''
+          const p = document.createElement('p')
+          p.style.cssText = 'color:#f85149;font-size:13px;font-weight:600'
+          p.textContent = `${city.name}の3D都市モデルを読み込めませんでした`
+          const small = document.createElement('small')
+          small.style.cssText = 'color:#8b949e;font-size:10px;max-width:320px;word-break:break-all'
+          small.textContent = String(e)
+          const btn = document.createElement('button')
+          btn.className = 'overlay-retry-btn'
+          btn.textContent = '再試行'
+          btn.onclick = () => setTilesRetry((n) => n + 1)
+          overlayRef.current.append(p, small, btn)
         }
       })
 
     store.setBuildingProps(null)
     selectedFeatureRef.current = null
-  }, [store.selectedCity]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [store.selectedCity, tilesRetry]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── クリックイベント（モード別）────────────────
   useEffect(() => {
@@ -383,6 +396,75 @@ export function CesiumMap() {
       // select モードのダブルクリックは地図ズームに任せる（何もしない）
     }, ScreenSpaceEventType.LEFT_DOUBLE_CLICK)
 
+    // ── WP/ピンのドラッグ移動（selectモード）──────────────────
+    // パネルの数値入力なしで地図上を直接つかんで動かせるようにする。
+    // ドラッグ中はエンティティ位置を直接更新し（60fps・store経由の全再構築を避ける）、
+    // 離した時点で store に確定コミット → ルート線・高度バーが追従再構築される。
+    interface DragState {
+      entity: Entity
+      kind: 'wp' | 'pin'
+      planId?: string
+      itemId: string
+      altAGL: number  // wp: 地上高を維持したまま横移動
+      last?: { lon: number; lat: number; ground: number }
+    }
+    let drag: DragState | null = null
+    const cameraCtrl = viewer.scene.screenSpaceCameraController
+
+    handler.setInputAction((movement: { position: Cartesian2 }) => {
+      if (useDroneStore.getState().mapMode !== 'select') return
+      const picked = viewer.scene.pick(movement.position)
+      if (!defined(picked) || !(picked.id instanceof Entity)) return
+      const eid: string = picked.id.id ?? ''
+      if (eid.startsWith('wp:')) {
+        const [, planId, wpId] = eid.split(':')
+        const wp = useDroneStore.getState().plans.find((p) => p.id === planId)
+          ?.waypoints.find((w) => w.id === wpId)
+        if (!wp) return
+        drag = { entity: picked.id, kind: 'wp', planId, itemId: wpId, altAGL: wp.altAGL }
+      } else if (eid.startsWith('pin:')) {
+        const pin = useDroneStore.getState().pins.find((p) => p.id === eid.slice(4))
+        if (!pin) return
+        drag = { entity: picked.id, kind: 'pin', itemId: pin.id, altAGL: 3 }
+      } else return
+      cameraCtrl.enableInputs = false  // ドラッグ中は地図が動かないようにロック
+      viewer.canvas.style.cursor = 'grabbing'
+    }, ScreenSpaceEventType.LEFT_DOWN)
+
+    handler.setInputAction((movement: { endPosition: Cartesian2 }) => {
+      if (!drag) return
+      const ray = viewer.camera.getPickRay(movement.endPosition)
+      const cart = ray ? viewer.scene.globe.pick(ray, viewer.scene) : undefined
+      if (!cart) return
+      const c = Cartographic.fromCartesian(cart)
+      const lon = CesiumMath.toDegrees(c.longitude)
+      const lat = CesiumMath.toDegrees(c.latitude)
+      const ground = c.height
+      drag.entity.position = new ConstantPositionProperty(
+        Cartesian3.fromDegrees(lon, lat, ground + drag.altAGL)
+      )
+      drag.last = { lon, lat, ground }
+    }, ScreenSpaceEventType.MOUSE_MOVE)
+
+    handler.setInputAction(() => {
+      if (!drag) return
+      const { last } = drag
+      if (last) {
+        if (drag.kind === 'wp' && drag.planId) {
+          useDroneStore.getState().updateWaypoint(drag.planId, drag.itemId, {
+            lon: last.lon, lat: last.lat, groundAlt: last.ground,
+          })
+        } else if (drag.kind === 'pin') {
+          useDroneStore.getState().updatePin(drag.itemId, {
+            lon: last.lon, lat: last.lat, alt: last.ground,
+          })
+        }
+      }
+      cameraCtrl.enableInputs = true
+      viewer.canvas.style.cursor = ''
+      drag = null
+    }, ScreenSpaceEventType.LEFT_UP)
+
     // 右クリック:
     //   zone モード → 最後の頂点をアンドゥ
     //   select モード + エンティティ → ポップアップ表示（編集・削除はポップアップ内で行う）
@@ -434,6 +516,11 @@ export function CesiumMap() {
       handlerRef.current?.destroy()
       handlerRef.current = null
       window.removeEventListener('keydown', onKeyDown)
+      // ドラッグ途中でアンマウントされてもカメラ操作ロックを残さない
+      if (!viewer.isDestroyed()) {
+        cameraCtrl.enableInputs = true
+        viewer.canvas.style.cursor = ''
+      }
     }
   }, [])
 

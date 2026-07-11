@@ -235,6 +235,19 @@ export function MapEntityPopup() {
               </div>
             </label>
           )}
+          {(wp.action === 'hover' || wpIdx === plan.waypoints.length - 1) && (
+            <label className="map-popup-label">
+              機首方位（空欄=進行方向）
+              <div className="input-unit">
+                <input type="number" min={0} max={359} className="map-popup-input" placeholder="自動"
+                  value={wp.heading ?? ''}
+                  onChange={(e) => updateWaypoint(planId, id, {
+                    heading: e.target.value === '' ? undefined : Number(e.target.value),
+                  })} />
+                <span>°</span>
+              </div>
+            </label>
+          )}
           <div className="map-popup-coords">
             {wp.lat.toFixed(5)}, {wp.lon.toFixed(5)}
           </div>

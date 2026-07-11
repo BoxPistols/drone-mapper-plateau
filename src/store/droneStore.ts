@@ -248,10 +248,11 @@ export const useDroneStore = create<DroneStore>()(
         const plan = get().plans.find((p) => p.id === planId)
         if (!plan) return
         // 数値フィールドの NaN を弾く（入力欄を空にすると Number('')=0, 途中入力で NaN になり
-        // シミュレーションが凍結・表示が壊れるのを防ぐ）
+        // シミュレーションが凍結・表示が壊れるのを防ぐ）。
+        // undefined は「クリアして自動に戻す」意図なので通す（heading の自動化など）
         const clean: Partial<Waypoint> = { ...patch }
-        for (const key of ['altAGL', 'speedMS', 'hoverSec', 'groundAlt'] as const) {
-          if (key in clean && !Number.isFinite(clean[key] as number)) delete clean[key]
+        for (const key of ['altAGL', 'speedMS', 'hoverSec', 'groundAlt', 'heading'] as const) {
+          if (key in clean && clean[key] !== undefined && !Number.isFinite(clean[key] as number)) delete clean[key]
         }
         get().updatePlan(planId, {
           waypoints: plan.waypoints.map((w) => (w.id === wpId ? { ...w, ...clean } : w)),

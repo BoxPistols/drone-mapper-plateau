@@ -121,6 +121,44 @@ describe('sampleAtElapsed — 等速性', () => {
   })
 })
 
+describe('sampleAtElapsed — WP指定の機首方位（撮影向き）', () => {
+  it('ホバーWPに heading 指定があればその方位を向く', () => {
+    const wps = [
+      wp(139.80, 35.70, 50, 5),
+      wp(139.802, 35.702, 50, 5, { action: 'hover', hoverSec: 5, heading: 270 }),
+      wp(139.804, 35.704, 50, 5),
+    ]
+    const phases = buildFlightPhases(wps)
+    const hoverStart = phases[0].durationMs
+    const s = sampleAtElapsed(wps, phases, hoverStart + 1000)
+    expect(s.hovering).toBe(true)
+    expect(s.heading).toBe(270)
+  })
+
+  it('最終WPに heading 指定があれば終端でその方位を向く', () => {
+    const wps = [
+      wp(139.80, 35.70, 50, 5),
+      wp(139.802, 35.702, 50, 5, { heading: 180 }),
+    ]
+    const phases = buildFlightPhases(wps)
+    const end = sampleAtElapsed(wps, phases, totalFlightMs(phases) + 1000)
+    expect(end.heading).toBe(180)
+  })
+
+  it('heading 未指定なら進行方向（自動）のまま', () => {
+    const wps = [
+      wp(139.80, 35.70, 50, 5),
+      wp(139.802, 35.702, 50, 5, { action: 'hover', hoverSec: 5 }),
+      wp(139.804, 35.704, 50, 5),
+    ]
+    const phases = buildFlightPhases(wps)
+    const s = sampleAtElapsed(wps, phases, phases[0].durationMs + 1000)
+    // 北東方向へ直進中のホバー: 進行方向 ≈ 33〜45°付近（cos補正込み）
+    expect(s.heading).toBeGreaterThan(20)
+    expect(s.heading).toBeLessThan(60)
+  })
+})
+
 describe('sampleAtElapsed — ホバー', () => {
   it('ホバー中は位置・方位が静止し speed=0 を返す', () => {
     const wps = sampleCourse()

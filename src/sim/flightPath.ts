@@ -170,15 +170,16 @@ export function sampleAtElapsed(wps: Waypoint[], phases: FlightPhase[], elapsedM
         const s = splineSample(wps, phase.segIdx, t)
         return { ...s, speedMS: safeSpeed(wps[phase.segIdx].speedMS), wpNumber: phase.segIdx + 2, hovering: false }
       }
-      // ホバー: WPに静止。方位は直前セグメント終端の進行方向で確定（シーク後も安定）
+      // ホバー: WPに静止。方位はWP指定の機首方位（撮影向きの指定）を優先し、
+      // 未指定なら直前セグメント終端の進行方向で確定（シーク後も安定）
       const wp = wps[phase.wpIdx]
-      const { heading } = splineSample(wps, phase.wpIdx - 1, 1)
+      const heading = wp.heading ?? splineSample(wps, phase.wpIdx - 1, 1).heading
       return { lon: wp.lon, lat: wp.lat, altAGL: wp.altAGL, heading, pitchDeg: 0, speedMS: 0, wpNumber: phase.wpIdx + 1, hovering: true }
     }
     cumMs += phase.durationMs
   }
-  // 終端: 最終WPに固定
+  // 終端: 最終WPに固定（機首方位指定があれば向く）
   const last = wps[wps.length - 1]
-  const { heading } = splineSample(wps, wps.length - 2, 1)
+  const heading = last.heading ?? splineSample(wps, wps.length - 2, 1).heading
   return { lon: last.lon, lat: last.lat, altAGL: last.altAGL, heading, pitchDeg: 0, speedMS: 0, wpNumber: wps.length, hovering: false }
 }

@@ -1,6 +1,16 @@
 import { useState } from 'react'
 import { useDroneStore } from '../../store/droneStore'
+import { computeFlightStats } from '../../sim/flightPath'
 import type { MapMode } from '../../types'
+
+// 配置中のライブ統計表示用フォーマッタ
+function fmtDistShort(m: number) {
+  return m >= 1000 ? `${(m / 1000).toFixed(1)}km` : `${Math.round(m)}m`
+}
+function fmtTimeShort(ms: number) {
+  const s = Math.round(ms / 1000)
+  return s < 60 ? `${s}秒` : `${Math.floor(s / 60)}分${String(s % 60).padStart(2, '0')}秒`
+}
 
 const TOOLS: { mode: MapMode; label: string; sub: string; icon: string }[] = [
   {
@@ -30,11 +40,15 @@ const TOOLS: { mode: MapMode; label: string; sub: string; icon: string }[] = [
 ]
 
 export function MapToolbar() {
-  const { mapMode, setMapMode, drawingZonePoints, commitZone, resetDrawingPoints, activePlanId, plans } =
+  const { mapMode, setMapMode, drawingZonePoints, commitZone, resetDrawingPoints, activePlanId, plans, deleteWaypoint } =
     useDroneStore()
   const [zoneName, setZoneName] = useState('')
 
   const activePlan = plans.find((p) => p.id === activePlanId)
+  // WP配置中のライブ統計（追加するたびに距離・時間が即座に見える）
+  const liveStats = mapMode === 'waypoint' && activePlan
+    ? computeFlightStats(activePlan.waypoints)
+    : null
 
   const handleCommitZone = () => {
     // prompt() はモバイルwebviewで抑制されうるためインライン入力に変更
@@ -99,12 +113,27 @@ export function MapToolbar() {
         </div>
       )}
 
-      {/* 通過ポイント追加中のガイド */}
+      {/* 通過ポイント追加中のガイド（ライブ統計付き） */}
       {mapMode === 'waypoint' && activePlan && (
         <div className="zone-drawing-guide">
           <span className="zone-guide-text">
-            「{activePlan.name}」に経路を追加中 — 地図をクリック
+            「{activePlan.name}」{activePlan.waypoints.length}ポイント
+            {liveStats
+              ? ` — ${fmtDistShort(liveStats.distM)}・約${fmtTimeShort(liveStats.totalMs)}`
+              : ' — 地図をクリックして追加'}
           </span>
+          {activePlan.waypoints.length > 0 && (
+            <button
+              className="zone-cancel-btn"
+              onClick={() => {
+                const last = activePlan.waypoints[activePlan.waypoints.length - 1]
+                deleteWaypoint(activePlan.id, last.id)
+              }}
+              title="最後に追加したポイントを取り消す"
+            >
+              1つ戻す
+            </button>
+          )}
           <button className="zone-commit-btn" onClick={() => setMapMode('select')}>
             ✓ 完了
           </button>

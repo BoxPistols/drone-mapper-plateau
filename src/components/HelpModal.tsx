@@ -115,6 +115,7 @@ export function HelpModal({ onClose }: Props) {
             <table className="help-table">
               <tbody>
                 <tr><td>飛行エリアや目印をクリック</td><td>名前・設定を変更できます</td></tr>
+                <tr><td>通過ポイント・目印を<b>ドラッグ</b></td><td>位置を直接動かせます</td></tr>
                 <tr><td>右クリック</td><td>削除の確認画面が出ます</td></tr>
                 <tr>
                   <td>建物をクリック</td>
