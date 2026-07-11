@@ -59,7 +59,12 @@ export function SimPlayer() {
       return
     }
     const plan = plans.find((p) => p.id === simulation.planId)
-    if (!plan || plan.waypoints.length < 2) return
+    if (!plan || plan.waypoints.length < 2) {
+      // 再生中にWP削除で2点未満になった場合、「飛行中」のまま固まらないよう停止する
+      droneSimBridge.active = false
+      useDroneStore.getState().setSimulation({ playing: false })
+      return
+    }
 
     // フェーズ列（飛行 + ホバー）は flightPath に一本化。弧長ベースで等速飛行
     const phases = buildFlightPhases(plan.waypoints)

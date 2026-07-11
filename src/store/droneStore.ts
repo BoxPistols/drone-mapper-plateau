@@ -357,7 +357,7 @@ export const useDroneStore = create<DroneStore>()(
         droneSimBridge.altAGL = init.altAGL
         // 地形タイル未ロード時に前回値(0や別都市の値)のままだと機体が沈む/浮くため
         // WP0に保存済みの地盤高で初期化する（ロード後は preRender が上書き）
-        droneSimBridge.groundAlt = plan.waypoints[0].groundAlt
+        droneSimBridge.groundAlt = plan.waypoints[0].groundAlt ?? 0
         droneSimBridge.heading = init.heading
         droneSimBridge.pitch = init.pitchDeg
         const wpCount = plan.waypoints.length
@@ -492,7 +492,7 @@ export const useDroneStore = create<DroneStore>()(
         droneSimBridge.lat = init.lat
         droneSimBridge.altAGL = init.altAGL
         // 地形ロード前の沈み込み防止（startSimulation と同じ理由）
-        droneSimBridge.groundAlt = waypoints[0].groundAlt
+        droneSimBridge.groundAlt = waypoints[0].groundAlt ?? 0
         droneSimBridge.heading = init.heading
         droneSimBridge.pitch = init.pitchDeg
 

@@ -37,6 +37,13 @@ describe('catmullRomTangent', () => {
     expect(tan.lon).toBeGreaterThan(0)
     expect(Math.abs(tan.lat)).toBeLessThan(1e-9)
   })
+
+  it('高度変化がある場合、altAGL 接線が上昇/下降方向を反映する', () => {
+    const up = catmullRomTangent(P(0, 0, 0), P(1, 0, 10), P(2, 0, 20), P(3, 0, 30), 0.5)
+    expect(up.altAGL).toBeGreaterThan(0)
+    const down = catmullRomTangent(P(0, 0, 30), P(1, 0, 20), P(2, 0, 10), P(3, 0, 0), 0.5)
+    expect(down.altAGL).toBeLessThan(0)
+  })
 })
 
 describe('mirrorPoint', () => {

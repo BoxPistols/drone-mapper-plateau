@@ -6,7 +6,7 @@ import { defineConfig } from 'vitest/config'
 export default defineConfig({
   test: {
     environment: 'node',
-    include: ['src/**/*.test.ts'],
-    globals: true,
+    include: ['src/**/*.test.ts', 'src/**/*.test.tsx'],
+    // 各テストで vitest から明示的に import する方針（型安全のため globals は使わない）
   },
 })

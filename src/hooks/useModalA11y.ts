@@ -1,7 +1,11 @@
 import { useEffect, useRef } from 'react'
 
+// 複数モーダルが同時に開いた場合、Escape/Tab は最前面（最後に開いた）だけが
+// 処理する。スタックで管理しないと Escape 1回で背面のモーダルまで閉じてしまう
+const modalStack: symbol[] = []
+
 // モーダルのアクセシビリティ共通処理:
-// - Escape キーで閉じる
+// - Escape キーで閉じる（最前面のモーダルのみ）
 // - 開いた瞬間にモーダル内先頭のフォーカス可能要素へフォーカス移動
 // - Tab を内部にトラップ（背後の要素へ抜けない）
 // role="dialog" aria-modal="true" は各モーダル側で付与する。
@@ -17,6 +21,9 @@ export function useModalA11y<T extends HTMLElement>(onClose: () => void) {
 
   useEffect(() => {
     const container = ref.current
+    const modalId = Symbol('modal')
+    modalStack.push(modalId)
+    const isTopmost = () => modalStack[modalStack.length - 1] === modalId
 
     const focusable = () =>
       Array.from(
@@ -30,6 +37,7 @@ export function useModalA11y<T extends HTMLElement>(onClose: () => void) {
     first?.focus()
 
     const onKey = (e: KeyboardEvent) => {
+      if (!isTopmost()) return
       if (e.key === 'Escape') {
         e.preventDefault()
         onCloseRef.current()
@@ -48,7 +56,11 @@ export function useModalA11y<T extends HTMLElement>(onClose: () => void) {
       }
     }
     document.addEventListener('keydown', onKey)
-    return () => document.removeEventListener('keydown', onKey)
+    return () => {
+      document.removeEventListener('keydown', onKey)
+      const i = modalStack.indexOf(modalId)
+      if (i >= 0) modalStack.splice(i, 1)
+    }
   }, [])
 
   return ref

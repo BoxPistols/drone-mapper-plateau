@@ -20,7 +20,7 @@ describe('pointInPolygon', () => {
 })
 
 describe('generatePerimeterPoints', () => {
-  it('外周に沿ってポイントを生成し、隣接間隔がほぼ spacing に等しい', () => {
+  it('外周に沿ってポイントを生成し、全点がゾーン範囲内にある', () => {
     const spacing = 50
     const pts = generatePerimeterPoints(square, spacing)
     expect(pts.length).toBeGreaterThan(0)

@@ -39,10 +39,9 @@ export const ACTION_BADGES: Record<WaypointAction, string> = {
   hover:       '⏸',
 }
 
-// 全 WaypointAction 値（外部入力の検証用）
-export const WAYPOINT_ACTIONS: readonly WaypointAction[] = [
-  'none', 'photo', 'video_start', 'video_stop', 'hover',
-]
+// 全 WaypointAction 値（外部入力の検証用）— ACTION_LABELS のキーから派生し、
+// 新しいアクション追加時の更新漏れ（coerce が正当値を 'none' に誤変換）を防ぐ
+export const WAYPOINT_ACTIONS = Object.keys(ACTION_LABELS) as readonly WaypointAction[]
 
 // 未検証の文字列を安全に WaypointAction へ変換する（LLM出力・インポート用）
 export function coerceWaypointAction(value: unknown): WaypointAction {
