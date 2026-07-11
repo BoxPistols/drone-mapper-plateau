@@ -160,6 +160,14 @@ function tForDistance(cumLenM: number[], dist: number): number {
  * tick・シーク・HUD がすべてこの1関数を使うことで表示と実位置のズレを防ぐ。
  */
 export function sampleAtElapsed(wps: Waypoint[], phases: FlightPhase[], elapsedMs: number): FlightSample {
+  // 防御ガード: 呼び出し側は2点以上を保証しているが、空/1点でもクラッシュさせない
+  if (wps.length === 0) {
+    return { lon: 0, lat: 0, altAGL: 0, heading: 0, pitchDeg: 0, speedMS: 0, wpNumber: 0, hovering: false }
+  }
+  if (wps.length === 1) {
+    const w = wps[0]
+    return { lon: w.lon, lat: w.lat, altAGL: w.altAGL, heading: w.heading ?? 0, pitchDeg: 0, speedMS: 0, wpNumber: 1, hovering: false }
+  }
   let cumMs = 0
   for (const phase of phases) {
     if (elapsedMs < cumMs + phase.durationMs) {

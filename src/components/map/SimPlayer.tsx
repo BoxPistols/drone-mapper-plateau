@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useDroneStore } from '../../store/droneStore'
 import { droneSimBridge } from '../../sim/droneSimBridge'
-import { buildFlightPhases, sampleAtElapsed, computeFlightStats, type FlightSample } from '../../sim/flightPath'
+import { buildFlightPhases, totalFlightMs, sampleAtElapsed, computeFlightStats, type FlightSample } from '../../sim/flightPath'
 import { MissionComplete } from '../MissionComplete'
 import { CAMERA_LABELS, CAMERA_DESCRIPTIONS } from '../../constants/labels'
 import { isEditableTarget } from '../../utils/domUtils'
@@ -92,6 +92,21 @@ export function SimPlayer() {
     () => (plan && plan.waypoints.length >= 2 ? buildFlightPhases(plan.waypoints) : null),
     [plan]
   )
+
+  // シミュ中にWPの速度・高度・位置が編集されると総所要時間が変わる。
+  // tick の進捗計算・シークバー・時間表示はすべて store の totalMs を参照するため、
+  // ここで進捗率を保ったまま一元的に同期する（表示だけ動的計算すると実挙動とズレる）
+  useEffect(() => {
+    if (!simulation || !hudPhases) return
+    const newTotal = totalFlightMs(hudPhases)
+    if (Math.abs(newTotal - simulation.totalMs) < 1) return
+    setSimulation({
+      totalMs: newTotal,
+      ...(simulation.playing && simulation.startedAt != null
+        ? { startedAt: Date.now() - (simulation.progress * newTotal) / simulation.speed }
+        : {}),
+    })
+  }, [hudPhases, simulation, setSimulation])
 
   if (!simulation) return null
 

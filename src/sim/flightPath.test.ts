@@ -248,6 +248,19 @@ describe('退化入力への頑健性', () => {
       expect(total).toBeGreaterThan(0)
     }
   })
+
+  it('空配列・1点のみでもクラッシュせず安全な値を返す（防御ガード）', () => {
+    const empty = sampleAtElapsed([], [], 1000)
+    expect(empty.wpNumber).toBe(0)
+    expect(Number.isFinite(empty.lon)).toBe(true)
+
+    const single = wp(139.8, 35.7, 50, 5, { heading: 90 })
+    const s = sampleAtElapsed([single], [], 1000)
+    expect(s.lon).toBe(single.lon)
+    expect(s.lat).toBe(single.lat)
+    expect(s.heading).toBe(90)
+    expect(s.wpNumber).toBe(1)
+  })
 })
 
 describe('splineSample — 飛行ピッチ角（POVカメラ姿勢追従用）', () => {

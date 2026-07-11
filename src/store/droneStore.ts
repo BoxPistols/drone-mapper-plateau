@@ -251,7 +251,7 @@ export const useDroneStore = create<DroneStore>()(
         // シミュレーションが凍結・表示が壊れるのを防ぐ）。
         // undefined は「クリアして自動に戻す」意図なので通す（heading の自動化など）
         const clean: Partial<Waypoint> = { ...patch }
-        for (const key of ['altAGL', 'speedMS', 'hoverSec', 'groundAlt', 'heading'] as const) {
+        for (const key of ['lon', 'lat', 'altAGL', 'speedMS', 'hoverSec', 'groundAlt', 'heading'] as const) {
           if (key in clean && clean[key] !== undefined && !Number.isFinite(clean[key] as number)) delete clean[key]
         }
         get().updatePlan(planId, {
@@ -355,6 +355,9 @@ export const useDroneStore = create<DroneStore>()(
         droneSimBridge.lon = init.lon
         droneSimBridge.lat = init.lat
         droneSimBridge.altAGL = init.altAGL
+        // 地形タイル未ロード時に前回値(0や別都市の値)のままだと機体が沈む/浮くため
+        // WP0に保存済みの地盤高で初期化する（ロード後は preRender が上書き）
+        droneSimBridge.groundAlt = plan.waypoints[0].groundAlt
         droneSimBridge.heading = init.heading
         droneSimBridge.pitch = init.pitchDeg
         const wpCount = plan.waypoints.length
@@ -488,6 +491,8 @@ export const useDroneStore = create<DroneStore>()(
         droneSimBridge.lon = init.lon
         droneSimBridge.lat = init.lat
         droneSimBridge.altAGL = init.altAGL
+        // 地形ロード前の沈み込み防止（startSimulation と同じ理由）
+        droneSimBridge.groundAlt = waypoints[0].groundAlt
         droneSimBridge.heading = init.heading
         droneSimBridge.pitch = init.pitchDeg
 
