@@ -13,6 +13,7 @@ function writeBridge(s: FlightSample) {
   droneSimBridge.lat = s.lat
   droneSimBridge.altAGL = s.altAGL
   droneSimBridge.heading = s.heading
+  droneSimBridge.pitch = s.pitchDeg
 }
 
 export function SimPlayer() {

@@ -28,6 +28,8 @@ export interface FlightSample {
   altAGL: number
   /** 機首方位 deg（北=0, 時計回り） */
   heading: number
+  /** 飛行ピッチ角 deg（上昇=正・下降=負。ホバー/終端は0） */
+  pitchDeg: number
   /** 現在の対地速度 m/s（ホバー中・終端は0） */
   speedMS: number
   /** 現在向かっている（ホバー中は滞在中の）WP番号 1-based */
@@ -54,13 +56,21 @@ function controlPoints(wps: Waypoint[], segIdx: number) {
   return [p0, p1, p2, p3] as const
 }
 
-/** スプラインパラメータ t での位置と機首方位（方位は経度成分を cos(lat) 補正） */
+/**
+ * スプラインパラメータ t での位置・機首方位・飛行ピッチ角。
+ * 方位は経度成分を cos(lat) 補正。ピッチは接線の (垂直変化 / 水平距離) から求め、
+ * 上昇で正・下降で負（deg）。POVカメラの姿勢追従に使う。
+ */
 export function splineSample(wps: Waypoint[], segIdx: number, t: number) {
   const [p0, p1, p2, p3] = controlPoints(wps, segIdx)
   const pt = catmullRom(p0, p1, p2, p3, t)
   const tan = catmullRomTangent(p0, p1, p2, p3, t)
-  const heading = Math.atan2(tan.lon * Math.cos((pt.lat * Math.PI) / 180), tan.lat) * (180 / Math.PI)
-  return { lon: pt.lon, lat: pt.lat, altAGL: pt.altAGL, heading }
+  const cosLat = Math.cos((pt.lat * Math.PI) / 180)
+  const heading = Math.atan2(tan.lon * cosLat, tan.lat) * (180 / Math.PI)
+  // 接線の水平成分をメートル換算し、垂直成分(m)との比から飛行ピッチ角を得る
+  const horizM = Math.hypot(tan.lon * 111320 * cosLat, tan.lat * 110540)
+  const pitchDeg = horizM > 1e-9 ? Math.atan2(tan.altAGL, horizM) * (180 / Math.PI) : 0
+  return { lon: pt.lon, lat: pt.lat, altAGL: pt.altAGL, heading, pitchDeg }
 }
 
 /**
@@ -163,12 +173,12 @@ export function sampleAtElapsed(wps: Waypoint[], phases: FlightPhase[], elapsedM
       // ホバー: WPに静止。方位は直前セグメント終端の進行方向で確定（シーク後も安定）
       const wp = wps[phase.wpIdx]
       const { heading } = splineSample(wps, phase.wpIdx - 1, 1)
-      return { lon: wp.lon, lat: wp.lat, altAGL: wp.altAGL, heading, speedMS: 0, wpNumber: phase.wpIdx + 1, hovering: true }
+      return { lon: wp.lon, lat: wp.lat, altAGL: wp.altAGL, heading, pitchDeg: 0, speedMS: 0, wpNumber: phase.wpIdx + 1, hovering: true }
     }
     cumMs += phase.durationMs
   }
   // 終端: 最終WPに固定
   const last = wps[wps.length - 1]
   const { heading } = splineSample(wps, wps.length - 2, 1)
-  return { lon: last.lon, lat: last.lat, altAGL: last.altAGL, heading, speedMS: 0, wpNumber: wps.length, hovering: false }
+  return { lon: last.lon, lat: last.lat, altAGL: last.altAGL, heading, pitchDeg: 0, speedMS: 0, wpNumber: wps.length, hovering: false }
 }

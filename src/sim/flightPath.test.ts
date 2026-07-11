@@ -212,6 +212,41 @@ describe('退化入力への頑健性', () => {
   })
 })
 
+describe('splineSample — 飛行ピッチ角（POVカメラ姿勢追従用）', () => {
+  it('上昇セグメント中間で正のピッチ、下降で負のピッチを返す', () => {
+    const climb = [wp(139.80, 35.70, 30, 5), wp(139.802, 35.702, 90, 5)]
+    const descend = [wp(139.80, 35.70, 90, 5), wp(139.802, 35.702, 30, 5)]
+    expect(splineSample(climb, 0, 0.5).pitchDeg).toBeGreaterThan(3)
+    expect(splineSample(descend, 0, 0.5).pitchDeg).toBeLessThan(-3)
+  })
+
+  it('水平飛行ではピッチ ≈ 0', () => {
+    const level = [wp(139.80, 35.70, 50, 5), wp(139.802, 35.702, 50, 5)]
+    expect(Math.abs(splineSample(level, 0, 0.5).pitchDeg)).toBeLessThan(0.5)
+  })
+
+  it('ホバー・終端サンプルのピッチは0', () => {
+    const wps = sampleCourse()
+    const phases = buildFlightPhases(wps)
+    const total = totalFlightMs(phases)
+    expect(sampleAtElapsed(wps, phases, total + 1000).pitchDeg).toBe(0)
+  })
+})
+
+describe('ルート描画とスプライン飛行の一致（WPからの逸脱ゼロ）', () => {
+  it('スプラインサンプルは各WPで厳密に一致する（描画線が飛行軌跡と同一）', () => {
+    const wps = sampleCourse()
+    for (let i = 0; i < wps.length - 1; i++) {
+      const s0 = splineSample(wps, i, 0)
+      const s1 = splineSample(wps, i, 1)
+      expect(s0.lon).toBeCloseTo(wps[i].lon, 9)
+      expect(s0.lat).toBeCloseTo(wps[i].lat, 9)
+      expect(s1.lon).toBeCloseTo(wps[i + 1].lon, 9)
+      expect(s1.lat).toBeCloseTo(wps[i + 1].lat, 9)
+    }
+  })
+})
+
 describe('computeFlightStats', () => {
   it('WPが2点未満なら null', () => {
     expect(computeFlightStats([])).toBeNull()

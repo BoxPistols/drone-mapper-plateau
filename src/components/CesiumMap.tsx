@@ -9,11 +9,12 @@ import {
   LabelStyle, VerticalOrigin, HorizontalOrigin,
   PolylineGlowMaterialProperty, CallbackProperty,
   PolygonHierarchy, HeightReference, NearFarScalar,
-  defined, Matrix4,
+  defined, Matrix4, SceneMode, PerspectiveFrustum,
 } from 'cesium'
 import { useDroneStore } from '../store/droneStore'
 import { droneSimBridge } from '../sim/droneSimBridge'
 import { cesiumViewerRef } from '../sim/cesiumViewerRef'
+import { splineSample } from '../sim/flightPath'
 import 'cesium/Build/Cesium/Widgets/widgets.css'
 
 Ion.defaultAccessToken = import.meta.env.VITE_CESIUM_TOKEN ?? ''
@@ -152,6 +153,9 @@ export function CesiumMap() {
   const overlayRef = useRef<HTMLDivElement>(null)
   const smoothHeadingRef = useRef(0)       // POV/追跡カメラのヘディング平滑状態 (rad)
   const smoothBankRef    = useRef(0)       // バンク角のスムーシング状態
+  const smoothPitchRef   = useRef(0)       // POVピッチの平滑状態 (rad)
+  const lastFrameMsRef   = useRef(0)       // フレームレート非依存平滑のための前フレーム時刻
+  const savedFovRef      = useRef<number | null>(null) // POV進入前のFOV退避
 
   const store = useDroneStore()
 
@@ -548,10 +552,23 @@ export function CesiumMap() {
       const wps = activePlan.waypoints
 
       if (wps.length >= 2) {
-        // ルートライン: groundAlt + altAGL = 実際のMSL高度で描画
+        // ルートライン: 機体が実際に飛ぶ Catmull-Rom スプラインと同一の軌跡を描画する。
+        // 直線チョードで描くと機体がセグメント中間で「線から逸脱して見える」ため、
+        // flightPath.splineSample で密にサンプリングして一致させる。
+        // 高度は WP間の groundAlt 線形補間 + スプライン altAGL（WP地点では実MSLと厳密一致）
+        const ROUTE_SAMPLES = 16
+        const routePositions: Cartesian3[] = []
+        for (let i = 0; i < wps.length - 1; i++) {
+          for (let s = i === 0 ? 0 : 1; s <= ROUTE_SAMPLES; s++) {
+            const t = s / ROUTE_SAMPLES
+            const p = splineSample(wps, i, t)
+            const ground = wps[i].groundAlt + (wps[i + 1].groundAlt - wps[i].groundAlt) * t
+            routePositions.push(Cartesian3.fromDegrees(p.lon, p.lat, ground + p.altAGL))
+          }
+        }
         add(new Entity({
           polyline: {
-            positions: wps.map((w) => Cartesian3.fromDegrees(w.lon, w.lat, w.groundAlt + w.altAGL)),
+            positions: routePositions,
             width: 3,
             clampToGround: false,
             material: new PolylineGlowMaterialProperty({
@@ -649,6 +666,13 @@ export function CesiumMap() {
     // 初回フレームで前回のモードが残りドローン表示がちらつくのを防ぐ
     droneSimBridge.cameraMode = store.simulation.cameraMode
 
+    // 平面(2D)モード中に開始された場合は3Dへ強制切替。
+    // 2DシーンではPOV/追跡カメラの setView(orientation) が成立しない
+    if (viewer.scene.mode !== SceneMode.SCENE3D) {
+      viewer.scene.morphTo3D(0)
+      setSceneMode('3d')
+    }
+
     // ─ ドローン位置: groundAlt (地盤高MSL) + altAGL (地上高) = 絶対高度
     // groundAlt は preRender ループで globe.getHeight() から毎フレーム更新される
     const dronePositionCB = new CallbackProperty(() => {
@@ -720,6 +744,7 @@ export function CesiumMap() {
     // （最初のRAFティックまでの数フレームで誤方向を向かないようにする）
     smoothHeadingRef.current = CesiumMath.toRadians(droneSimBridge.heading)
     smoothBankRef.current = 0
+    smoothPitchRef.current = CesiumMath.toRadians(-18)
     // 地盤高(MSL)を加えないと地形の高い都市でカメラが地中に潜る
     const initCarto = Cartographic.fromDegrees(droneSimBridge.lon, droneSimBridge.lat)
     droneSimBridge.groundAlt = viewer.scene.globe.getHeight(initCarto) ?? droneSimBridge.groundAlt
@@ -733,9 +758,20 @@ export function CesiumMap() {
     })
 
     // ─ カメラ追従 + 地盤高更新（preRender で毎フレーム実行）
+    lastFrameMsRef.current = 0
     const removeCameraListener = viewer.scene.preRender.addEventListener(() => {
       const sim = useDroneStore.getState().simulation
       if (!sim || !droneSimBridge.active) return
+
+      // フレーム間隔 dt を計測し、平滑係数をフレームレート非依存にする
+      // （固定α/フレームだと 30fps と 144fps でカメラの追従感が変わってしまう）
+      const nowMs = performance.now()
+      const dt = lastFrameMsRef.current > 0
+        ? Math.min((nowMs - lastFrameMsRef.current) / 1000, 0.1)
+        : 1 / 60
+      lastFrameMsRef.current = nowMs
+      // 時定数 τ の指数平滑係数: α = 1 - exp(-dt/τ)
+      const alphaFor = (tau: number) => 1 - Math.exp(-dt / tau)
 
       // 地盤高を同期取得（ロード済みタイルから高速に返る）。
       // 未ロードタイルで getHeight が undefined を返すとき ?? 0 にすると海抜0へ落ち、
@@ -750,6 +786,11 @@ export function CesiumMap() {
         droneSimBridge.groundAlt + droneSimBridge.altAGL,
       )
       const targetHeading = CesiumMath.toRadians(droneSimBridge.heading)
+      // POVカメラ目標ピッチ: 基準の前下がり -12° に飛行ピッチ（上昇/下降角）を重ねる。
+      // 実機FPVのジンバル追従に近い、抑えめの追従率(0.6)とクランプで酔いを防ぐ
+      const targetPitch = CesiumMath.toRadians(
+        Math.max(-40, Math.min(15, -12 + droneSimBridge.pitch * 0.6))
+      )
 
       // カメラモード切替検知: POV/追跡 入場時にスムーシング状態をリセット
       const prevMode = droneSimBridge.cameraMode
@@ -757,12 +798,25 @@ export function CesiumMap() {
       if (sim.cameraMode !== prevMode && sim.cameraMode !== 'free') {
         smoothHeadingRef.current = targetHeading
         smoothBankRef.current = 0
+        smoothPitchRef.current = targetPitch
+      }
+
+      // POVでは実機カメラらしい広角FOV(80°)、それ以外は退避値へ復帰
+      const frustum = viewer.camera.frustum
+      if (frustum instanceof PerspectiveFrustum) {
+        if (sim.cameraMode === 'pov') {
+          if (savedFovRef.current == null) savedFovRef.current = frustum.fov ?? CesiumMath.toRadians(60)
+          frustum.fov = CesiumMath.toRadians(80)
+        } else if (savedFovRef.current != null) {
+          frustum.fov = savedFovRef.current
+          savedFovRef.current = null
+        }
       }
 
       // ヘディングは最短弧の指数平滑（lerp）で追従 — ホバー明けの方位ジャンプも滑らかに
       const rawDiff = targetHeading - smoothHeadingRef.current
       const headingDiff = rawDiff - Math.round(rawDiff / (Math.PI * 2)) * (Math.PI * 2)
-      smoothHeadingRef.current += headingDiff * 0.12
+      smoothHeadingRef.current += headingDiff * alphaFor(0.25)
       const headingRad = smoothHeadingRef.current
 
       if (sim.cameraMode === 'follow') {
@@ -787,17 +841,18 @@ export function CesiumMap() {
           },
         })
       } else if (sim.cameraMode === 'pov') {
-        // POV: ドローン視点 — バンキング付き（映画的旋回演出）
+        // POV: ドローンカメラ視点 — 飛行姿勢（ピッチ）追従 + 旋回バンキング
         // 平滑ヘディングと目標方位の差 = 旋回の強さ としてバンク角を算出
         const targetBank = Math.max(-0.35, Math.min(0.35, headingDiff * 1.2))  // ±20° 上限
-        // α=0.15 の指数平滑（急旋回でも滑らか）
-        smoothBankRef.current = smoothBankRef.current * 0.85 + targetBank * 0.15
+        smoothBankRef.current += (targetBank - smoothBankRef.current) * alphaFor(0.3)
+        // 上昇・下降でカメラが進行方向を見上げる/見下ろす（ジンバル風の緩い追従）
+        smoothPitchRef.current += (targetPitch - smoothPitchRef.current) * alphaFor(0.5)
 
         viewer.camera.setView({
           destination: pos,
           orientation: {
             heading: headingRad,
-            pitch: CesiumMath.toRadians(-18),
+            pitch: smoothPitchRef.current,
             roll: smoothBankRef.current,
           },
         })
@@ -814,8 +869,13 @@ export function CesiumMap() {
       removeCameraListener()
       preRenderRemoveRef.current = null
       droneSimBridge.active = false
-      // POVのバンク角が残ると通常操作時に地平線が傾いたままになる
       const cam = viewerRef.current?.camera
+      // POV用の広角FOVを元に戻す
+      if (cam && savedFovRef.current != null && cam.frustum instanceof PerspectiveFrustum) {
+        cam.frustum.fov = savedFovRef.current
+        savedFovRef.current = null
+      }
+      // POVのバンク角が残ると通常操作時に地平線が傾いたままになる
       if (cam && Math.abs(cam.roll) > 1e-4) {
         cam.setView({
           destination: cam.position,

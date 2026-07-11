@@ -355,6 +355,7 @@ export const useDroneStore = create<DroneStore>()(
         droneSimBridge.lat = init.lat
         droneSimBridge.altAGL = init.altAGL
         droneSimBridge.heading = init.heading
+        droneSimBridge.pitch = init.pitchDeg
         const wpCount = plan.waypoints.length
         set({
           simulation: {
@@ -487,6 +488,7 @@ export const useDroneStore = create<DroneStore>()(
         droneSimBridge.lat = init.lat
         droneSimBridge.altAGL = init.altAGL
         droneSimBridge.heading = init.heading
+        droneSimBridge.pitch = init.pitchDeg
 
         set({
           selectedCity: city,
