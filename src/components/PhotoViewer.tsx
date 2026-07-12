@@ -1,4 +1,5 @@
 import { useRef, useEffect, useState } from 'react'
+import { isEditableTarget } from '../utils/domUtils'
 import type { MediaItem } from '../types'
 
 // ── 写真Diff比較ビューワー ──
@@ -130,6 +131,7 @@ export function PhotoViewer({ item, photos, onNavigate }: {
   // キーボードナビ
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
+      if (isEditableTarget(e.target)) return // 入力欄でのキー操作を奪わない
       if (e.key === 'ArrowLeft') goPrev()
       else if (e.key === 'ArrowRight') goNext()
       else if (e.key === ' ') { e.preventDefault(); setAutoplay((v) => !v) }

@@ -122,6 +122,8 @@ export function MediaPanel() {
       let type: MediaItem['type'] = 'photo'
       if (file.type.startsWith('video')) type = 'video'
       else if (ext === 'glb' || ext === 'gltf') type = 'model3d'
+      // ファイル名からパノラマを判別（判別しないと 'panorama' に到達せずビルドエラー）
+      else if (/pano|360/i.test(file.name)) type = 'panorama'
 
       const reader = new FileReader()
       reader.onload = (e) => {

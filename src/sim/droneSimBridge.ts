@@ -19,6 +19,8 @@ export const droneSimBridge = {
   groundAlt: 0,
   /** 機首方位 (degrees, 北=0, 時計回り) */
   heading: 0,
+  /** 飛行ピッチ角 (degrees, 上昇=正・下降=負) — POVカメラの姿勢追従用 */
+  pitch: 0,
   /** カメラモード — CallbackProperty の show 判定に使用 */
   cameraMode: 'pov' as string,
 }

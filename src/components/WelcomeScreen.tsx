@@ -1,4 +1,5 @@
 import { useDroneStore } from '../store/droneStore'
+import { useModalA11y } from '../hooks/useModalA11y'
 
 const WELCOME_KEY = 'droneMapper_welcomed'
 
@@ -9,20 +10,29 @@ interface Props {
 export function WelcomeScreen({ onClose }: Props) {
   const { seedExampleData } = useDroneStore()
 
+  const handleStart = () => {
+    sessionStorage.setItem(WELCOME_KEY, '1')
+    onClose()
+  }
+
   const handleDemo = () => {
     sessionStorage.setItem(WELCOME_KEY, '1')
     seedExampleData()
     onClose()
   }
 
-  const handleStart = () => {
-    sessionStorage.setItem(WELCOME_KEY, '1')
-    onClose()
-  }
+  const ref = useModalA11y<HTMLDivElement>(handleStart)
 
   return (
     <div className="welcome-overlay" onClick={handleStart}>
-      <div className="welcome-panel" onClick={(e) => e.stopPropagation()}>
+      <div
+        ref={ref}
+        className="welcome-panel"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="welcome-title"
+        onClick={(e) => e.stopPropagation()}
+      >
         {/* ロゴ */}
         <div className="welcome-logo">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5}>
@@ -38,7 +48,7 @@ export function WelcomeScreen({ onClose }: Props) {
 
         {/* タイトル */}
         <div>
-          <p className="welcome-title">DroneMapper へようこそ</p>
+          <p className="welcome-title" id="welcome-title">DroneMapper へようこそ</p>
           <p className="welcome-subtitle">
             ドローンの飛行エリアやルートを地図上で管理できるツールです。<br/>
             まずはデモを見て、使い方をつかんでみましょう！

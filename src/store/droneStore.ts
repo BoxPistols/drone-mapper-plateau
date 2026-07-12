@@ -1,6 +1,9 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
+import { Cartographic } from 'cesium'
 import { droneSimBridge } from '../sim/droneSimBridge'
+import { buildFlightPhases, totalFlightMs, sampleAtElapsed } from '../sim/flightPath'
+import { cesiumViewerRef } from '../sim/cesiumViewerRef'
 import { generatePerimeterPoints, generateGridPoints } from '../utils/geoUtils'
 import type {
   CityConfig,
@@ -244,8 +247,15 @@ export const useDroneStore = create<DroneStore>()(
       updateWaypoint: (planId, wpId, patch) => {
         const plan = get().plans.find((p) => p.id === planId)
         if (!plan) return
+        // 数値フィールドの NaN を弾く（入力欄を空にすると Number('')=0, 途中入力で NaN になり
+        // シミュレーションが凍結・表示が壊れるのを防ぐ）。
+        // undefined は「クリアして自動に戻す」意図なので通す（heading の自動化など）
+        const clean: Partial<Waypoint> = { ...patch }
+        for (const key of ['lon', 'lat', 'altAGL', 'speedMS', 'hoverSec', 'groundAlt', 'heading'] as const) {
+          if (key in clean && clean[key] !== undefined && !Number.isFinite(clean[key] as number)) delete clean[key]
+        }
         get().updatePlan(planId, {
-          waypoints: plan.waypoints.map((w) => (w.id === wpId ? { ...w, ...patch } : w)),
+          waypoints: plan.waypoints.map((w) => (w.id === wpId ? { ...w, ...clean } : w)),
         })
       },
       deleteWaypoint: (planId, wpId) => {
@@ -312,14 +322,18 @@ export const useDroneStore = create<DroneStore>()(
           return
         }
 
-        // 既存WPの後に追加
+        // 既存WPの後に追加。地盤高(MSL)を地形からサンプリングして
+        // クリック追加WP（addWaypoint）と同じ座標系に揃える。
+        // groundAlt:0 のままだと WPマーカー・ルート線・高度バーが地形を無視して沈む/浮く。
+        const globe = cesiumViewerRef.current?.scene.globe
         const wps = [...plan.waypoints]
         for (const [lon, lat] of points) {
+          const groundAlt = globe?.getHeight(Cartographic.fromDegrees(lon, lat)) ?? 0
           wps.push({
             id: uid(),
             lon, lat,
             altAGL: opts.altAGL,
-            groundAlt: 0,
+            groundAlt,
             speedMS: opts.speedMS,
             action: 'none' as const,
           })
@@ -333,30 +347,19 @@ export const useDroneStore = create<DroneStore>()(
       startSimulation: (planId) => {
         const plan = get().plans.find((p) => p.id === planId)
         if (!plan || plan.waypoints.length < 2) return
-        // 各セグメントの所要時間（飛行 + ホバー）を積算
-        let totalMs = 0
-        for (let i = 0; i < plan.waypoints.length - 1; i++) {
-          const a = plan.waypoints[i], b = plan.waypoints[i + 1]
-          const dx = (b.lon - a.lon) * 111320 * Math.cos((a.lat * Math.PI) / 180)
-          const dy = (b.lat - a.lat) * 110540
-          const dz = b.altAGL - a.altAGL
-          const dist = Math.sqrt(dx * dx + dy * dy + dz * dz)
-          totalMs += Math.max((dist / a.speedMS) * 1000, 1)
-          // ホバー停止時間（最終WP手前のみ有効）
-          if (b.action === 'hover' && b.hoverSec && i < plan.waypoints.length - 2) {
-            totalMs += b.hoverSec * 1000
-          }
-        }
-        // ブリッジを初期位置で初期化
-        const w0 = plan.waypoints[0], w1 = plan.waypoints[1]
-        // WP0→WP1 の実際の飛行方向から初期ヘディングを計算
-        // heading=0 (北向き) のまま放置するとPOVカメラが誤方向を向く
-        const initHeadingDeg = Math.atan2(w1.lon - w0.lon, w1.lat - w0.lat) * (180 / Math.PI)
+        // 所要時間・初期位置/方位は SimPlayer と同一のフェーズ定義から算出
+        const phases = buildFlightPhases(plan.waypoints)
+        const totalMs = totalFlightMs(phases)
+        const init = sampleAtElapsed(plan.waypoints, phases, 0)
         droneSimBridge.active = true
-        droneSimBridge.lon = w0.lon
-        droneSimBridge.lat = w0.lat
-        droneSimBridge.altAGL = w0.altAGL
-        droneSimBridge.heading = initHeadingDeg
+        droneSimBridge.lon = init.lon
+        droneSimBridge.lat = init.lat
+        droneSimBridge.altAGL = init.altAGL
+        // 地形タイル未ロード時に前回値(0や別都市の値)のままだと機体が沈む/浮くため
+        // WP0に保存済みの地盤高で初期化する（ロード後は preRender が上書き）
+        droneSimBridge.groundAlt = plan.waypoints[0].groundAlt ?? 0
+        droneSimBridge.heading = init.heading
+        droneSimBridge.pitch = init.pitchDeg
         const wpCount = plan.waypoints.length
         set({
           simulation: {
@@ -480,25 +483,18 @@ export const useDroneStore = create<DroneStore>()(
           { id: uid(), recordId: recId, name: '浅草寺_点群モデル.glb', type: 'model3d', lon: 139.7967, lat: 35.7148, altM: 50, timestamp: now, sizeKB: 45000, notes: 'WP2周辺の点群データから生成', modelUrl: 'inline' },
         ]
 
-        droneSimBridge.active = false
-
-        // 総飛行時間計算
-        let totalMs = 0
-        for (let i = 0; i < waypoints.length - 1; i++) {
-          const a = waypoints[i], b = waypoints[i + 1]
-          const dx = (b.lon - a.lon) * 111320 * Math.cos((a.lat * Math.PI) / 180)
-          const dy = (b.lat - a.lat) * 110540
-          const dz = b.altAGL - a.altAGL
-          totalMs += (Math.sqrt(dx * dx + dy * dy + dz * dz) / a.speedMS) * 1000
-        }
-
-        // ブリッジ初期化
-        const w0 = waypoints[0]
+        // 総飛行時間・初期位置/方位を本番シミュレーションと同じ定義で計算
+        const phases = buildFlightPhases(waypoints)
+        const totalMs = totalFlightMs(phases)
+        const init = sampleAtElapsed(waypoints, phases, 0)
         droneSimBridge.active = true
-        droneSimBridge.lon = w0.lon
-        droneSimBridge.lat = w0.lat
-        droneSimBridge.altAGL = w0.altAGL
-        droneSimBridge.heading = 0
+        droneSimBridge.lon = init.lon
+        droneSimBridge.lat = init.lat
+        droneSimBridge.altAGL = init.altAGL
+        // 地形ロード前の沈み込み防止（startSimulation と同じ理由）
+        droneSimBridge.groundAlt = waypoints[0].groundAlt ?? 0
+        droneSimBridge.heading = init.heading
+        droneSimBridge.pitch = init.pitchDeg
 
         set({
           selectedCity: city,

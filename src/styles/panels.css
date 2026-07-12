@@ -775,6 +775,7 @@ textarea { resize: vertical; }
 }
 .wp-alt--warn { color: #dc2626 !important; }
 .field-warning { font-size: 10px; color: #b91c1c; margin-top: 2px; }
+.field-hint { font-size: 10px; color: var(--text-faint); margin-top: 2px; }
 .label-warn { font-size: 10px; color: #b91c1c; font-weight: 600; margin-left: 4px; }
 .wp-action-badge {
   font-size: 12px; line-height: 1;

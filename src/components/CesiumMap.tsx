@@ -9,16 +9,15 @@ import {
   LabelStyle, VerticalOrigin, HorizontalOrigin,
   PolylineGlowMaterialProperty, CallbackProperty,
   PolygonHierarchy, HeightReference, NearFarScalar,
-  defined, Matrix4,
+  defined, Matrix4, SceneMode, PerspectiveFrustum,
 } from 'cesium'
 import { useDroneStore } from '../store/droneStore'
 import { droneSimBridge } from '../sim/droneSimBridge'
+import { cesiumViewerRef } from '../sim/cesiumViewerRef'
+import { splineSample } from '../sim/flightPath'
 import 'cesium/Build/Cesium/Widgets/widgets.css'
 
 Ion.defaultAccessToken = import.meta.env.VITE_CESIUM_TOKEN ?? ''
-
-// Cesium Viewer を他コンポーネントから参照できるように公開
-export const cesiumViewerRef: { current: Viewer | null } = { current: null }
 
 const ZONE_FILL: Record<string, Color> = {
   planned:    Color.fromCssColorString('#58a6ff').withAlpha(0.2),
@@ -114,7 +113,7 @@ function buildDroneCanvas(size = 72): HTMLCanvasElement {
   for (let i = 0; i < 8; i++) {
     const a = (i * 45) * Math.PI / 180
     const bx = cx + size * 0.095 * Math.cos(a), by = cy + size * 0.095 * Math.sin(a)
-    i === 0 ? ctx.moveTo(bx, by) : ctx.lineTo(bx, by)
+    if (i === 0) ctx.moveTo(bx, by); else ctx.lineTo(bx, by)
   }
   ctx.closePath()
   const gBody = ctx.createRadialGradient(cx - size * 0.02, cy - size * 0.02, 0, cx, cy, size * 0.1)
@@ -145,6 +144,7 @@ export function CesiumMap() {
   const containerRef = useRef<HTMLDivElement>(null)
   const viewerRef = useRef<Viewer | null>(null)
   const [sceneMode, setSceneMode] = useState<'3d' | '2d' | 'columbus'>('3d')
+  const [tilesRetry, setTilesRetry] = useState(0)  // 3D Tiles 読み込み再試行トリガー
   const tilesetRef = useRef<Cesium3DTileset | null>(null)
   const selectedFeatureRef = useRef<Cesium3DTileFeature | null>(null)
   const handlerRef = useRef<ScreenSpaceEventHandler | null>(null)
@@ -152,8 +152,11 @@ export function CesiumMap() {
   const droneEntityRef = useRef<Entity | null>(null)
   const preRenderRemoveRef = useRef<(() => void) | null>(null)
   const overlayRef = useRef<HTMLDivElement>(null)
-  const prevHeadingRef = useRef(0)         // POVバンキング計算用
-  const smoothBankRef  = useRef(0)         // バンク角のスムーシング状態
+  const smoothHeadingRef = useRef(0)       // POV/追跡カメラのヘディング平滑状態 (rad)
+  const smoothBankRef    = useRef(0)       // バンク角のスムーシング状態
+  const smoothPitchRef   = useRef(0)       // POVピッチの平滑状態 (rad)
+  const lastFrameMsRef   = useRef(0)       // フレームレート非依存平滑のための前フレーム時刻
+  const savedFovRef      = useRef<number | null>(null) // POV進入前のFOV退避
 
   const store = useDroneStore()
 
@@ -207,7 +210,7 @@ export function CesiumMap() {
       viewerRef.current = null
       cesiumViewerRef.current = null
     }
-  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [])
 
   // ── 都市切替（3D Tiles）────────────────────────
   useEffect(() => {
@@ -256,14 +259,26 @@ export function CesiumMap() {
         if (overlayRef.current) overlayRef.current.style.display = 'none'
       })
       .catch((e) => {
+        // 一時的なネットワーク断で復帰不能にならないよう再試行ボタンを出す
         if (overlayRef.current) {
-          overlayRef.current.innerHTML = `<p style="color:#f85149;font-size:13px">読み込み失敗</p><small style="color:#8b949e;font-size:10px">${e}</small>`
+          overlayRef.current.textContent = ''
+          const p = document.createElement('p')
+          p.style.cssText = 'color:#f85149;font-size:13px;font-weight:600'
+          p.textContent = `${city.name}の3D都市モデルを読み込めませんでした`
+          const small = document.createElement('small')
+          small.style.cssText = 'color:#8b949e;font-size:10px;max-width:320px;word-break:break-all'
+          small.textContent = String(e)
+          const btn = document.createElement('button')
+          btn.className = 'overlay-retry-btn'
+          btn.textContent = '再試行'
+          btn.onclick = () => setTilesRetry((n) => n + 1)
+          overlayRef.current.append(p, small, btn)
         }
       })
 
     store.setBuildingProps(null)
     selectedFeatureRef.current = null
-  }, [store.selectedCity]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [store.selectedCity, tilesRetry]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── クリックイベント（モード別）────────────────
   useEffect(() => {
@@ -372,12 +387,83 @@ export function CesiumMap() {
       if (mapMode === 'zone') {
         const pts = drawingZonePoints.slice(0, -2)
         if (pts.length >= 3) {
-          const name = prompt('ゾーン名を入力', 'フライトゾーン') ?? 'フライトゾーン'
-          commitZone(name, 'planned', pts)
+          // ダブルクリックは既定名で即確定（名前はゾーンをクリックして後から変更可能）。
+          // prompt() はモバイルwebviewで抑制されうるため使わない
+          commitZone('飛行エリア', 'planned', pts)
+          useDroneStore.getState().addToast('飛行エリアを作成しました。名前はクリックで変更できます', 'success')
         }
       }
       // select モードのダブルクリックは地図ズームに任せる（何もしない）
     }, ScreenSpaceEventType.LEFT_DOUBLE_CLICK)
+
+    // ── WP/ピンのドラッグ移動（selectモード）──────────────────
+    // パネルの数値入力なしで地図上を直接つかんで動かせるようにする。
+    // ドラッグ中はエンティティ位置を直接更新し（60fps・store経由の全再構築を避ける）、
+    // 離した時点で store に確定コミット → ルート線・高度バーが追従再構築される。
+    interface DragState {
+      entity: Entity
+      kind: 'wp' | 'pin'
+      planId?: string
+      itemId: string
+      altAGL: number  // wp: 地上高を維持したまま横移動
+      last?: { lon: number; lat: number; ground: number }
+    }
+    let drag: DragState | null = null
+    const cameraCtrl = viewer.scene.screenSpaceCameraController
+
+    handler.setInputAction((movement: { position: Cartesian2 }) => {
+      if (useDroneStore.getState().mapMode !== 'select') return
+      const picked = viewer.scene.pick(movement.position)
+      if (!defined(picked) || !(picked.id instanceof Entity)) return
+      const eid: string = picked.id.id ?? ''
+      if (eid.startsWith('wp:')) {
+        const [, planId, wpId] = eid.split(':')
+        const wp = useDroneStore.getState().plans.find((p) => p.id === planId)
+          ?.waypoints.find((w) => w.id === wpId)
+        if (!wp) return
+        drag = { entity: picked.id, kind: 'wp', planId, itemId: wpId, altAGL: wp.altAGL }
+      } else if (eid.startsWith('pin:')) {
+        const pin = useDroneStore.getState().pins.find((p) => p.id === eid.slice(4))
+        if (!pin) return
+        drag = { entity: picked.id, kind: 'pin', itemId: pin.id, altAGL: 3 }
+      } else return
+      cameraCtrl.enableInputs = false  // ドラッグ中は地図が動かないようにロック
+      viewer.canvas.style.cursor = 'grabbing'
+    }, ScreenSpaceEventType.LEFT_DOWN)
+
+    handler.setInputAction((movement: { endPosition: Cartesian2 }) => {
+      if (!drag) return
+      const ray = viewer.camera.getPickRay(movement.endPosition)
+      const cart = ray ? viewer.scene.globe.pick(ray, viewer.scene) : undefined
+      if (!cart) return
+      const c = Cartographic.fromCartesian(cart)
+      const lon = CesiumMath.toDegrees(c.longitude)
+      const lat = CesiumMath.toDegrees(c.latitude)
+      const ground = c.height
+      drag.entity.position = new ConstantPositionProperty(
+        Cartesian3.fromDegrees(lon, lat, ground + drag.altAGL)
+      )
+      drag.last = { lon, lat, ground }
+    }, ScreenSpaceEventType.MOUSE_MOVE)
+
+    handler.setInputAction(() => {
+      if (!drag) return
+      const { last } = drag
+      if (last) {
+        if (drag.kind === 'wp' && drag.planId) {
+          useDroneStore.getState().updateWaypoint(drag.planId, drag.itemId, {
+            lon: last.lon, lat: last.lat, groundAlt: last.ground,
+          })
+        } else if (drag.kind === 'pin') {
+          useDroneStore.getState().updatePin(drag.itemId, {
+            lon: last.lon, lat: last.lat, alt: last.ground,
+          })
+        }
+      }
+      cameraCtrl.enableInputs = true
+      viewer.canvas.style.cursor = ''
+      drag = null
+    }, ScreenSpaceEventType.LEFT_UP)
 
     // 右クリック:
     //   zone モード → 最後の頂点をアンドゥ
@@ -430,8 +516,13 @@ export function CesiumMap() {
       handlerRef.current?.destroy()
       handlerRef.current = null
       window.removeEventListener('keydown', onKeyDown)
+      // ドラッグ途中でアンマウントされてもカメラ操作ロックを残さない
+      if (!viewer.isDestroyed()) {
+        cameraCtrl.enableInputs = true
+        viewer.canvas.style.cursor = ''
+      }
     }
-  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [])
 
   // ── 静的エンティティ更新（ピン・ゾーン・WP）────
   useEffect(() => {
@@ -461,7 +552,9 @@ export function CesiumMap() {
           color: Color.fromCssColorString(pin.color),
           outlineColor: Color.WHITE,
           outlineWidth: 2,
-          heightReference: HeightReference.RELATIVE_TO_GROUND,
+          // pin.alt は海抜(MSL)。RELATIVE_TO_GROUND だと AGL 扱いで地盤高ぶん浮くため
+          // 絶対高度を尊重する NONE を使う（WPマーカーと同じ座標系）
+          heightReference: HeightReference.NONE,
           disableDepthTestDistance: Number.POSITIVE_INFINITY,
         },
         label: {
@@ -473,9 +566,9 @@ export function CesiumMap() {
           style: LabelStyle.FILL_AND_OUTLINE,
           verticalOrigin: VerticalOrigin.BOTTOM,
           horizontalOrigin: HorizontalOrigin.CENTER,
-          pixelOffset: { x: 0, y: -16 } as never,
+          pixelOffset: new Cartesian2(0, -16),
           scaleByDistance: new NearFarScalar(200, 1, 4000, 0.3),
-          heightReference: HeightReference.RELATIVE_TO_GROUND,
+          heightReference: HeightReference.NONE,
           disableDepthTestDistance: Number.POSITIVE_INFINITY,
         },
       }))
@@ -546,10 +639,23 @@ export function CesiumMap() {
       const wps = activePlan.waypoints
 
       if (wps.length >= 2) {
-        // ルートライン: groundAlt + altAGL = 実際のMSL高度で描画
+        // ルートライン: 機体が実際に飛ぶ Catmull-Rom スプラインと同一の軌跡を描画する。
+        // 直線チョードで描くと機体がセグメント中間で「線から逸脱して見える」ため、
+        // flightPath.splineSample で密にサンプリングして一致させる。
+        // 高度は WP間の groundAlt 線形補間 + スプライン altAGL（WP地点では実MSLと厳密一致）
+        const ROUTE_SAMPLES = 16
+        const routePositions: Cartesian3[] = []
+        for (let i = 0; i < wps.length - 1; i++) {
+          for (let s = i === 0 ? 0 : 1; s <= ROUTE_SAMPLES; s++) {
+            const t = s / ROUTE_SAMPLES
+            const p = splineSample(wps, i, t)
+            const ground = wps[i].groundAlt + (wps[i + 1].groundAlt - wps[i].groundAlt) * t
+            routePositions.push(Cartesian3.fromDegrees(p.lon, p.lat, ground + p.altAGL))
+          }
+        }
         add(new Entity({
           polyline: {
-            positions: wps.map((w) => Cartesian3.fromDegrees(w.lon, w.lat, w.groundAlt + w.altAGL)),
+            positions: routePositions,
             width: 3,
             clampToGround: false,
             material: new PolylineGlowMaterialProperty({
@@ -601,7 +707,7 @@ export function CesiumMap() {
             fillColor: Color.WHITE, outlineColor: Color.BLACK, outlineWidth: 2,
             style: LabelStyle.FILL_AND_OUTLINE,
             verticalOrigin: VerticalOrigin.BOTTOM,
-            pixelOffset: { x: 0, y: -16 } as never,
+            pixelOffset: new Cartesian2(0, -16),
             scaleByDistance: new NearFarScalar(100, 1, 6000, 0.2),
             heightReference: HeightReference.NONE,
             disableDepthTestDistance: Number.POSITIVE_INFINITY,
@@ -620,7 +726,7 @@ export function CesiumMap() {
         }))
       })
     }
-  }, [ // eslint-disable-line react-hooks/exhaustive-deps
+  }, [
     store.pins, store.zones, store.plans, store.activePlanId, store.drawingZonePoints,
   ])
 
@@ -644,6 +750,15 @@ export function CesiumMap() {
     }
 
     droneSimBridge.active = true
+    // 初回フレームで前回のモードが残りドローン表示がちらつくのを防ぐ
+    droneSimBridge.cameraMode = store.simulation.cameraMode
+
+    // 平面(2D)モード中に開始された場合は3Dへ強制切替。
+    // 2DシーンではPOV/追跡カメラの setView(orientation) が成立しない
+    if (viewer.scene.mode !== SceneMode.SCENE3D) {
+      viewer.scene.morphTo3D(0)
+      setSceneMode('3d')
+    }
 
     // ─ ドローン位置: groundAlt (地盤高MSL) + altAGL (地上高) = 絶対高度
     // groundAlt は preRender ループで globe.getHeight() から毎フレーム更新される
@@ -671,7 +786,10 @@ export function CesiumMap() {
         width: 48, height: 48,
         verticalOrigin: VerticalOrigin.CENTER,
         disableDepthTestDistance: Number.POSITIVE_INFINITY,
-        rotation: new CallbackProperty(() => (Date.now() / 500) % (Math.PI * 2), false) as never,
+        // 機首インジケーターを実際の飛行方位に向ける（billboard回転はスクリーン空間・反時計回り正）
+        rotation: new CallbackProperty(
+          () => viewer.camera.heading - CesiumMath.toRadians(droneSimBridge.heading), false
+        ) as never,
         show: droneVisible as never,
       },
       label: {
@@ -686,7 +804,7 @@ export function CesiumMap() {
         outlineWidth: 3,
         style: LabelStyle.FILL_AND_OUTLINE,
         verticalOrigin: VerticalOrigin.BOTTOM,
-        pixelOffset: { x: 0, y: -40 } as never,
+        pixelOffset: new Cartesian2(0, -40),
         disableDepthTestDistance: Number.POSITIVE_INFINITY,
         show: droneVisible as never,
       },
@@ -711,37 +829,82 @@ export function CesiumMap() {
 
     // ─ シミュレーション開始直後: 初期ヘディングでカメラを即座に配置
     // （最初のRAFティックまでの数フレームで誤方向を向かないようにする）
-    prevHeadingRef.current = CesiumMath.toRadians(droneSimBridge.heading)
+    smoothHeadingRef.current = CesiumMath.toRadians(droneSimBridge.heading)
     smoothBankRef.current = 0
-    const initPos = Cartesian3.fromDegrees(droneSimBridge.lon, droneSimBridge.lat, droneSimBridge.altAGL + 2)
+    smoothPitchRef.current = CesiumMath.toRadians(-18)
+    // 地盤高(MSL)を加えないと地形の高い都市でカメラが地中に潜る
+    const initCarto = Cartographic.fromDegrees(droneSimBridge.lon, droneSimBridge.lat)
+    droneSimBridge.groundAlt = viewer.scene.globe.getHeight(initCarto) ?? droneSimBridge.groundAlt
+    const initPos = Cartesian3.fromDegrees(
+      droneSimBridge.lon, droneSimBridge.lat,
+      droneSimBridge.groundAlt + droneSimBridge.altAGL,
+    )
     viewer.camera.setView({
       destination: initPos,
       orientation: { heading: CesiumMath.toRadians(droneSimBridge.heading), pitch: CesiumMath.toRadians(-18), roll: 0 },
     })
 
     // ─ カメラ追従 + 地盤高更新（preRender で毎フレーム実行）
+    lastFrameMsRef.current = 0
     const removeCameraListener = viewer.scene.preRender.addEventListener(() => {
       const sim = useDroneStore.getState().simulation
       if (!sim || !droneSimBridge.active) return
 
-      // 地盤高を同期取得（ロード済みタイルから高速に返る）
+      // フレーム間隔 dt を計測し、平滑係数をフレームレート非依存にする
+      // （固定α/フレームだと 30fps と 144fps でカメラの追従感が変わってしまう）
+      const nowMs = performance.now()
+      const dt = lastFrameMsRef.current > 0
+        ? Math.min((nowMs - lastFrameMsRef.current) / 1000, 0.1)
+        : 1 / 60
+      lastFrameMsRef.current = nowMs
+      // 時定数 τ の指数平滑係数: α = 1 - exp(-dt/τ)
+      const alphaFor = (tau: number) => 1 - Math.exp(-dt / tau)
+
+      // 地盤高を同期取得（ロード済みタイルから高速に返る）。
+      // 未ロードタイルで getHeight が undefined を返すとき ?? 0 にすると海抜0へ落ち、
+      // 機体とカメラが地形高さぶん瞬間的に沈む。取得できない間は直前値を維持する。
       const carto = Cartographic.fromDegrees(droneSimBridge.lon, droneSimBridge.lat)
-      droneSimBridge.groundAlt = viewer.scene.globe.getHeight(carto) ?? 0
+      const groundH = viewer.scene.globe.getHeight(carto)
+      if (groundH != null) droneSimBridge.groundAlt = groundH
 
       const pos = Cartesian3.fromDegrees(
         droneSimBridge.lon,
         droneSimBridge.lat,
         droneSimBridge.groundAlt + droneSimBridge.altAGL,
       )
-      const headingRad = CesiumMath.toRadians(droneSimBridge.heading)
+      const targetHeading = CesiumMath.toRadians(droneSimBridge.heading)
+      // POVカメラ目標ピッチ: 基準の前下がり -12° に飛行ピッチ（上昇/下降角）を重ねる。
+      // 実機FPVのジンバル追従に近い、抑えめの追従率(0.6)とクランプで酔いを防ぐ
+      const targetPitch = CesiumMath.toRadians(
+        Math.max(-40, Math.min(15, -12 + droneSimBridge.pitch * 0.6))
+      )
 
-      // カメラモード切替検知: POV 入場時にバンキング状態をリセット
+      // カメラモード切替検知: POV/追跡 入場時にスムーシング状態をリセット
       const prevMode = droneSimBridge.cameraMode
       droneSimBridge.cameraMode = sim.cameraMode
-      if (sim.cameraMode === 'pov' && prevMode !== 'pov') {
-        prevHeadingRef.current = headingRad
+      if (sim.cameraMode !== prevMode && sim.cameraMode !== 'free') {
+        smoothHeadingRef.current = targetHeading
         smoothBankRef.current = 0
+        smoothPitchRef.current = targetPitch
       }
+
+      // POVでは実機カメラらしい広角FOV(80°)、それ以外は退避値へ復帰
+      const frustum = viewer.camera.frustum
+      if (frustum instanceof PerspectiveFrustum) {
+        if (sim.cameraMode === 'pov') {
+          if (savedFovRef.current == null) savedFovRef.current = frustum.fov ?? CesiumMath.toRadians(60)
+          frustum.fov = CesiumMath.toRadians(80)
+        } else if (savedFovRef.current != null) {
+          frustum.fov = savedFovRef.current
+          savedFovRef.current = null
+        }
+      }
+
+      // ヘディングは最短弧の指数平滑（lerp）で追従 — ホバー明けの方位ジャンプも滑らかに
+      const rawDiff = targetHeading - smoothHeadingRef.current
+      const headingDiff = rawDiff - Math.round(rawDiff / (Math.PI * 2)) * (Math.PI * 2)
+      smoothHeadingRef.current += headingDiff * alphaFor(0.25)
+      const headingRad = smoothHeadingRef.current
 
       if (sim.cameraMode === 'follow') {
         // 追跡: ドローンの真後ろにカメラを置き、前方（進行方向）を向く
@@ -765,21 +928,18 @@ export function CesiumMap() {
           },
         })
       } else if (sim.cameraMode === 'pov') {
-        // POV: ドローン視点 — バンキング付き（映画的旋回演出）
-        // heading の変化率からバンク角を算出し、指数平滑でスムーシング
-        const rawDelta = headingRad - prevHeadingRef.current
-        // -π〜+π に正規化
-        const delta = rawDelta - Math.round(rawDelta / (Math.PI * 2)) * (Math.PI * 2)
-        const targetBank = Math.max(-0.35, Math.min(0.35, delta * 8))  // ±20° 上限
-        // α=0.15 の指数平滑（急旋回でも滑らか）
-        smoothBankRef.current = smoothBankRef.current * 0.85 + targetBank * 0.15
-        prevHeadingRef.current = headingRad
+        // POV: ドローンカメラ視点 — 飛行姿勢（ピッチ）追従 + 旋回バンキング
+        // 平滑ヘディングと目標方位の差 = 旋回の強さ としてバンク角を算出
+        const targetBank = Math.max(-0.35, Math.min(0.35, headingDiff * 1.2))  // ±20° 上限
+        smoothBankRef.current += (targetBank - smoothBankRef.current) * alphaFor(0.3)
+        // 上昇・下降でカメラが進行方向を見上げる/見下ろす（ジンバル風の緩い追従）
+        smoothPitchRef.current += (targetPitch - smoothPitchRef.current) * alphaFor(0.5)
 
         viewer.camera.setView({
           destination: pos,
           orientation: {
             heading: headingRad,
-            pitch: CesiumMath.toRadians(-18),
+            pitch: smoothPitchRef.current,
             roll: smoothBankRef.current,
           },
         })
@@ -796,18 +956,38 @@ export function CesiumMap() {
       removeCameraListener()
       preRenderRemoveRef.current = null
       droneSimBridge.active = false
+      const cam = viewerRef.current?.camera
+      // POV用の広角FOVを元に戻す
+      if (cam && savedFovRef.current != null && cam.frustum instanceof PerspectiveFrustum) {
+        cam.frustum.fov = savedFovRef.current
+        savedFovRef.current = null
+      }
+      // POVのバンク角が残ると通常操作時に地平線が傾いたままになる
+      if (cam && Math.abs(cam.roll) > 1e-4) {
+        cam.setView({
+          destination: cam.position,
+          orientation: { heading: cam.heading, pitch: cam.pitch, roll: 0 },
+        })
+      }
     }
   }, [store.simulation?.planId]) // planIdが変わった時だけエンティティを再生成
 
-  // ── カメラモード変更（free に戻す時 lookAt 解除）
+  // ── カメラモード変更（free に戻す時 lookAt 解除 + バンク角リセット）
   useEffect(() => {
     const viewer = viewerRef.current
     if (!viewer) return
     if (store.simulation?.cameraMode === 'free') {
       // Matrix4.IDENTITY でロック解除（カメラ位置が origin のときの NaN を回避）
       try { viewer.camera.lookAtTransform(Matrix4.IDENTITY) } catch { /* noop */ }
+      // POVから抜けるとバンク角(roll)が残り、俯瞰操作中も地平線が傾いたままになる
+      smoothBankRef.current = 0
+      const c = viewer.camera
+      if (Math.abs(c.roll) > 1e-4) {
+        c.setView({ destination: c.position, orientation: { heading: c.heading, pitch: c.pitch, roll: 0 } })
+      }
     }
-  }, [store.simulation?.cameraMode])
+    // cameraMode の変化時のみ実行したいので simulation 全体は依存に含めない
+  }, [store.simulation?.cameraMode]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── 場所検索 flyTo イベント ──────────────────
   useEffect(() => {
@@ -850,7 +1030,7 @@ export function CesiumMap() {
     const viewer = viewerRef.current
     if (!viewer) return
     const amount = viewer.camera.positionCartographic.height * 0.3
-    dir === 'in' ? viewer.camera.zoomIn(amount) : viewer.camera.zoomOut(amount)
+    if (dir === 'in') viewer.camera.zoomIn(amount); else viewer.camera.zoomOut(amount)
   }
 
   const handleSceneMode = (mode: '3d' | '2d' | 'columbus') => {

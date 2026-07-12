@@ -1,21 +1,7 @@
 import { useRef, useLayoutEffect, useState } from 'react'
 import { useDroneStore } from '../../store/droneStore'
+import { ZONE_TYPE_LABELS, ACTION_LABELS } from '../../constants/labels'
 import type { ZoneType, WaypointAction } from '../../types'
-
-const ZONE_TYPE_LABELS: Record<ZoneType, string> = {
-  planned:    '飛行予定エリア',
-  restricted: '飛行禁止区域',
-  caution:    '注意エリア',
-  completed:  '完了済み',
-}
-
-const ACTION_LABELS: Record<WaypointAction, string> = {
-  none:        'なし',
-  photo:       '写真を撮る',
-  video_start: '動画撮影を開始',
-  video_stop:  '動画撮影を停止',
-  hover:       'その場で停止',
-}
 
 const PIN_COLORS = ['#58a6ff', '#f78166', '#7ee787', '#ffa657', '#d2a8ff', '#ff7b72', '#79c0ff', '#ffffff']
 
@@ -88,7 +74,7 @@ export function MapEntityPopup() {
         <div className="map-popup-header">
           <span className="pin-dot" style={{ background: pin.color }} />
           <span className="map-popup-title">目印（ピン）</span>
-          <button className="map-popup-close" onClick={() => setMapPopup(null)}>×</button>
+          <button className="map-popup-close" aria-label="閉じる" onClick={() => setMapPopup(null)}>×</button>
         </div>
         <div className="map-popup-body">
           <label className="map-popup-label">
@@ -135,7 +121,7 @@ export function MapEntityPopup() {
       <PopupShell anchorX={x} anchorY={y}>
         <div className="map-popup-header">
           <span className={`zone-type-badge zone-${zone.type}`}>{ZONE_TYPE_LABELS[zone.type]}</span>
-          <button className="map-popup-close" onClick={() => setMapPopup(null)}>×</button>
+          <button className="map-popup-close" aria-label="閉じる" onClick={() => setMapPopup(null)}>×</button>
         </div>
         <div className="map-popup-body">
           <label className="map-popup-label">
@@ -205,7 +191,7 @@ export function MapEntityPopup() {
               d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/>
           </svg>
           <span className="map-popup-title">通過ポイント {wpIdx + 1}</span>
-          <button className="map-popup-close" onClick={() => setMapPopup(null)}>×</button>
+          <button className="map-popup-close" aria-label="閉じる" onClick={() => setMapPopup(null)}>×</button>
         </div>
         <div className="map-popup-body">
           <div style={{ fontSize: 12, color: 'var(--text-faint)', marginBottom: 2 }}>
@@ -246,6 +232,19 @@ export function MapEntityPopup() {
                   value={wp.hoverSec ?? 5}
                   onChange={(e) => updateWaypoint(planId, id, { hoverSec: Number(e.target.value) })} />
                 <span>秒</span>
+              </div>
+            </label>
+          )}
+          {(wp.action === 'hover' || wpIdx === plan.waypoints.length - 1) && (
+            <label className="map-popup-label">
+              機首方位（空欄=進行方向）
+              <div className="input-unit">
+                <input type="number" min={0} max={359} className="map-popup-input" placeholder="自動"
+                  value={wp.heading ?? ''}
+                  onChange={(e) => updateWaypoint(planId, id, {
+                    heading: e.target.value === '' ? undefined : Number(e.target.value),
+                  })} />
+                <span>°</span>
               </div>
             </label>
           )}

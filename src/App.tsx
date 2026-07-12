@@ -98,7 +98,7 @@ function ToastContainer() {
             {t.type === 'info'    && <path strokeLinecap="round" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>}
           </svg>
           <span>{t.message}</span>
-          <button onClick={() => removeToast(t.id)}>
+          <button onClick={() => removeToast(t.id)} aria-label="通知を閉じる">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
               <path strokeLinecap="round" d="M6 18L18 6M6 6l12 12"/>
             </svg>
@@ -155,6 +155,7 @@ function App() {
           <button
             className="header-return-btn"
             title="この都市に戻る"
+            aria-label="この都市に戻る"
             onClick={() => window.dispatchEvent(new CustomEvent('cesium:flyToCity'))}
           >
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
@@ -174,6 +175,7 @@ function App() {
           <button
             className="header-reset-btn"
             title="データをリセット"
+            aria-label="データをリセット"
             onClick={() => {
               if (confirm('すべてのデータをリセットしますか？\n（ピン・ゾーン・飛行計画・記録・撮影データが削除されます）')) {
                 localStorage.removeItem('drone-store')

@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useModalA11y } from '../hooks/useModalA11y'
 import type { FlightPlan } from '../types'
 
 interface Props {
@@ -26,15 +27,23 @@ export function PreflightChecklist({ plan, onConfirm, onCancel }: Props) {
   const toggle = (id: string) =>
     setChecked((prev) => ({ ...prev, [id]: !prev[id] }))
 
+  const ref = useModalA11y<HTMLDivElement>(onCancel)
+
   return (
     <div className="checklist-overlay">
-      <div className="checklist-modal">
+      <div
+        ref={ref}
+        className="checklist-modal"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="checklist-title"
+      >
         <div className="checklist-header">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
             <path strokeLinecap="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
           </svg>
           <div>
-            <h2>飛行前チェックリスト</h2>
+            <h2 id="checklist-title">飛行前チェックリスト</h2>
             <p className="checklist-plan-name">{plan.name}</p>
           </div>
         </div>

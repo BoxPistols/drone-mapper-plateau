@@ -1,7 +1,11 @@
 import { useState } from 'react'
+import { Cartographic, sampleTerrainMostDetailed } from 'cesium'
 import { useDroneStore } from '../../store/droneStore'
 import { PreflightChecklist } from '../PreflightChecklist'
 import { useNominatimSearch } from '../../hooks/useNominatimSearch'
+import { computeFlightStats } from '../../sim/flightPath'
+import { cesiumViewerRef } from '../../sim/cesiumViewerRef'
+import { ACTION_LABELS, ACTION_BADGES } from '../../constants/labels'
 import type { FlightPlan, Waypoint, WaypointAction, PlanStatus } from '../../types'
 
 const STATUS_LABELS: Record<PlanStatus, string> = {
@@ -10,41 +14,7 @@ const STATUS_LABELS: Record<PlanStatus, string> = {
   completed: '完了',
 }
 
-const ACTION_LABELS: Record<WaypointAction, string> = {
-  none:        'なし',
-  photo:       '写真を撮る',
-  video_start: '動画撮影を開始',
-  video_stop:  '動画撮影を停止',
-  hover:       'その場で停止',
-}
-
-const ACTION_BADGES: Record<WaypointAction, string> = {
-  none:        '',
-  photo:       '📷',
-  video_start: '🎬',
-  video_stop:  '⏹',
-  hover:       '⏸',
-}
-
-// ── 飛行統計の計算 ────────────────────────────
-function calcStats(wps: Waypoint[]) {
-  if (wps.length < 2) return null
-  let distM = 0, totalMs = 0
-  let photoCount = 0
-  const maxAlt = Math.max(...wps.map((w) => w.altAGL))
-  for (let i = 0; i < wps.length - 1; i++) {
-    const a = wps[i], b = wps[i + 1]
-    const dx = (b.lon - a.lon) * 111320 * Math.cos((a.lat * Math.PI) / 180)
-    const dy = (b.lat - a.lat) * 110540
-    const dz = b.altAGL - a.altAGL
-    const d = Math.sqrt(dx * dx + dy * dy + dz * dz)
-    distM += d
-    totalMs += Math.max((d / a.speedMS) * 1000, 1)
-    if (b.action === 'hover' && b.hoverSec && i < wps.length - 2) totalMs += b.hoverSec * 1000
-    if (b.action === 'photo' || b.action === 'video_start') photoCount++
-  }
-  return { distM, totalMs, maxAlt, photoCount }
-}
+// 飛行統計は sim/flightPath.computeFlightStats に一本化（弧長ベースで実飛行と一致）
 
 function fmtTime(ms: number) {
   const s = Math.round(ms / 1000)
@@ -256,6 +226,19 @@ function WaypointRow({
                 </div>
               </label>
             )}
+            {(wp.action === 'hover' || idx === total - 1) && (
+              <label>機首方位
+                <div className="input-unit">
+                  <input type="number" min={0} max={359} placeholder="自動"
+                    value={wp.heading ?? ''}
+                    onChange={(e) => onUpdate({
+                      heading: e.target.value === '' ? undefined : Number(e.target.value),
+                    })} />
+                  <span>°</span>
+                </div>
+                <span className="field-hint">停止中にカメラを向ける方角（空欄=進行方向）</span>
+              </label>
+            )}
           </div>
         </div>
       )}
@@ -293,33 +276,47 @@ function PlanDetail({ plan, onBack }: PlanDetailProps) {
   const [fetchingElevation, setFetchingElevation] = useState(false)
   const [elevProgress, setElevProgress] = useState({ current: 0, total: 0 })
 
+  // 地盤高の一括取得。
+  // 旧実装は国土地理院APIの「標高」（ジオイド基準）を使っていたが、Cesium地形の高さは
+  // 楕円体基準のため関東で約40mの基準面差が混入し、WPマーカーが地形からずれていた。
+  // 描画と同じ Cesium 地形からサンプリングすることで基準面を構造的に一致させる。
   const handleFetchElevations = async () => {
-    const total = plan.waypoints.length
+    const viewer = cesiumViewerRef.current
+    const wps = plan.waypoints
+    if (!viewer || wps.length === 0) return
+    const total = wps.length
     setFetchingElevation(true)
     setElevProgress({ current: 0, total })
     let updated = 0
-    for (let i = 0; i < total; i++) {
-      const wp = plan.waypoints[i]
-      setElevProgress({ current: i + 1, total })
-      try {
-        const res = await fetch(
-          `https://cyberjapandata2.gsi.go.jp/general/dem/scripts/getelevation.php?lon=${wp.lon}&lat=${wp.lat}&outtype=JSON`
-        )
-        const data = await res.json()
-        if (data.elevation !== '-----' && typeof data.elevation === 'number') {
-          updateWaypoint(plan.id, wp.id, { groundAlt: data.elevation })
+    try {
+      const positions = wps.map((w) => Cartographic.fromDegrees(w.lon, w.lat))
+      const sampled = await sampleTerrainMostDetailed(viewer.terrainProvider, positions)
+      sampled.forEach((c, i) => {
+        if (Number.isFinite(c.height)) {
+          updateWaypoint(plan.id, wps[i].id, { groundAlt: c.height })
           updated++
         }
-      } catch { /* skip */ }
-      await new Promise((r) => setTimeout(r, 200))
+        setElevProgress({ current: i + 1, total })
+      })
+    } catch {
+      // 地形プロバイダ未対応（トークン無し等）: ロード済みタイルから同期取得にフォールバック
+      wps.forEach((w, i) => {
+        const h = viewer.scene.globe.getHeight(Cartographic.fromDegrees(w.lon, w.lat))
+        if (h != null) {
+          updateWaypoint(plan.id, w.id, { groundAlt: h })
+          updated++
+        }
+        setElevProgress({ current: i + 1, total })
+      })
     }
     setFetchingElevation(false)
-    addToast(`${updated}/${total} ポイントの標高を取得しました`, 'success')
+    if (updated > 0) addToast(`${updated}/${total} ポイントの地盤高を地形から取得しました`, 'success')
+    else addToast('地盤高を取得できませんでした。地形の読み込み後にお試しください', 'warning')
   }
 
   const isActive = activePlanId === plan.id
   const isSimulating = simulation?.planId === plan.id
-  const stats = calcStats(plan.waypoints)
+  const stats = computeFlightStats(plan.waypoints)
   const hasOverLimit = plan.waypoints.some((w) => w.altAGL > 150)
 
   const handleSimStart = () => {
@@ -472,7 +469,7 @@ function PlanDetail({ plan, onBack }: PlanDetailProps) {
               className="wp-tool-btn"
               disabled={fetchingElevation || plan.waypoints.length === 0}
               onClick={handleFetchElevations}
-              title="国土地理院APIで標高を一括取得"
+              title="3D地形から各ポイントの地盤高を一括取得（描画と同じ基準面）"
             >
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} width={14} height={14}><path d="M8 3v2m8-2v2M3 8h2m14 0h2M7 14l3-3 2 2 4-4"/></svg>
               {fetchingElevation ? `${elevProgress.current}/${elevProgress.total}` : '標高'}
@@ -595,14 +592,18 @@ function PlanDetail({ plan, onBack }: PlanDetailProps) {
         <section className="panel-section plan-actions">
           <button
             className={`action-btn sim-btn ${isSimulating ? 'active' : ''}`}
-            disabled={plan.waypoints.length < 2}
+            disabled={plan.waypoints.length < 2 || isSimulating}
             onClick={handleSimStart}
-            title={plan.waypoints.length < 2 ? '通過ポイントを2つ以上追加してください' : ''}
+            title={
+              isSimulating ? 'すでにシミュレーション中です'
+                : plan.waypoints.length < 2 ? '通過ポイントを2つ以上追加してください' : ''
+            }
           >
             <svg viewBox="0 0 24 24" fill="currentColor">
               <path d="M8 5v14l11-7z"/>
             </svg>
-            {plan.waypoints.length < 2 ? '2ポイント以上必要' : 'シミュレーション'}
+            {isSimulating ? 'シミュレーション中'
+              : plan.waypoints.length < 2 ? '2ポイント以上必要' : 'シミュレーション'}
           </button>
 
           <button
@@ -714,7 +715,7 @@ export function PlansPanel() {
       ) : (
         <ul className="item-list plan-list">
           {plans.map((plan) => {
-            const stats = calcStats(plan.waypoints)
+            const stats = computeFlightStats(plan.waypoints)
             const overLimit = plan.waypoints.some((w) => w.altAGL > 150)
             return (
               <li
