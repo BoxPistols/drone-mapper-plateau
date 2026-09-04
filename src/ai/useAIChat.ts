@@ -1,8 +1,8 @@
 /**
  * AIチャット用 React Hook — マルチモデル対応
  *
- * 無料枠: gpt-5.6-luna / Gemini 2.5 Flash（アプリ側キー）
- * ユーザーが自身のOpenAI APIキーを入れた場合はそちらを使う
+ * 無料枠: gpt-5.6-luna / Gemini 3.8 Flash（アプリ側キー）
+ * 有料枠: gemini-2.5-pro（ユーザー自身のGemini APIキー）
  */
 import { useState, useCallback, useRef } from 'react'
 import OpenAI from 'openai'
@@ -20,10 +20,11 @@ export interface AIModel {
 }
 
 // gpt-5.4系（nano / mini）は提供終了し gpt-5.6-luna に統合された。
-// 有料枠だった mini が消えたため、OpenAI は luna 1本になる
+// 有料枠は Gemini Pro が担う（Pro は Gemini の無料枠対象外のため自前キーが要る）
 export const AI_MODELS: AIModel[] = [
   { id: 'gpt-5.6-luna',      label: 'GPT-5.6 Luna',      provider: 'openai', tier: 'free' },
-  { id: 'gemini-2.5-flash',  label: 'Gemini 2.5 Flash',  provider: 'gemini', tier: 'free' },
+  { id: 'gemini-3.8-flash',  label: 'Gemini 3.8 Flash',  provider: 'gemini', tier: 'free' },
+  { id: 'gemini-2.5-pro',    label: 'Gemini 2.5 Pro',    provider: 'gemini', tier: 'premium' },
 ]
 
 export const DEFAULT_MODEL = AI_MODELS[0] // gpt-5.6-luna
@@ -57,6 +58,10 @@ export interface ChatMessage {
 function createClient(model: AIModel, userApiKey: string | null): OpenAI {
   if (model.tier === 'premium') {
     if (!userApiKey) throw new Error('このモデルには APIキーの入力が必要です')
+    // 有料枠は Gemini Pro。OpenAI 互換エンドポイント経由で呼ぶ
+    if (model.provider === 'gemini') {
+      return new OpenAI({ apiKey: userApiKey, baseURL: GEMINI_BASE_URL, dangerouslyAllowBrowser: true })
+    }
     return new OpenAI({ apiKey: userApiKey, dangerouslyAllowBrowser: true })
   }
 
