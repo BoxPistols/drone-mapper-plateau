@@ -123,7 +123,7 @@ export function AIPanel() {
 
           <label className="ai-settings-label" style={{ marginTop: 12 }}>
             OpenAI API キー
-            <span className="ai-settings-hint">入力すると GPT-5.4 mini が使えます</span>
+            <span className="ai-settings-hint">入力すると自分のキーで GPT-5.6 Luna を使えます</span>
           </label>
           <div className="ai-key-input-wrap">
             <input
