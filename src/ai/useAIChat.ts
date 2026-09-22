@@ -1,7 +1,7 @@
 /**
  * AIチャット用 React Hook — マルチモデル対応
  *
- * 無料枠: gpt-5.6-luna / Gemini 3.8 Flash（アプリ側キー）
+ * 無料枠: gpt-6-luna / Gemini 3.8 Flash（アプリ側キー）
  * 有料枠: gemini-2.5-pro（ユーザー自身のGemini APIキー）
  */
 import { useState, useCallback, useRef } from 'react'
@@ -19,15 +19,15 @@ export interface AIModel {
   tier: ModelTier
 }
 
-// gpt-5.4系（nano / mini）は提供終了し gpt-5.6-luna に統合された。
+// gpt-5.4系（nano / mini）は提供終了し、後継のgpt-6-lunaを無料枠に置く。
 // 有料枠は Gemini Pro が担う（Pro は Gemini の無料枠対象外のため自前キーが要る）
 export const AI_MODELS: AIModel[] = [
-  { id: 'gpt-5.6-luna',      label: 'GPT-5.6 Luna',      provider: 'openai', tier: 'free' },
+  { id: 'gpt-6-luna',        label: 'GPT-6 Luna',        provider: 'openai', tier: 'free' },
   { id: 'gemini-3.8-flash',  label: 'Gemini 3.8 Flash',  provider: 'gemini', tier: 'free' },
   { id: 'gemini-2.5-pro',    label: 'Gemini 2.5 Pro',    provider: 'gemini', tier: 'premium' },
 ]
 
-export const DEFAULT_MODEL = AI_MODELS[0] // gpt-5.6-luna
+export const DEFAULT_MODEL = AI_MODELS[0] // gpt-6-luna
 
 const GEMINI_BASE_URL = 'https://generativelanguage.googleapis.com/v1beta/openai/'
 
@@ -103,7 +103,8 @@ export function useAIChat(model: AIModel, userApiKey: string | null) {
       while (continueLoop) {
         const stream = await client.chat.completions.create({
           model: model.id,
-          max_tokens: 4096,
+          // OpenAIのgpt-5系以降はmax_tokensを400で拒否するためmax_completion_tokensを使う。GeminiのOpenAI互換はmax_tokensのまま
+          ...(model.provider === 'openai' ? { max_completion_tokens: 4096 } : { max_tokens: 4096 }),
           messages: [
             { role: 'system', content: SYSTEM_PROMPT },
             ...historyRef.current,
