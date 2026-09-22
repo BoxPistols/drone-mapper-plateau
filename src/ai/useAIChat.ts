@@ -29,6 +29,17 @@ export const AI_MODELS: AIModel[] = [
 
 export const DEFAULT_MODEL = AI_MODELS[0] // gpt-6-luna
 
+/**
+ * プロバイダごとに出し分けるリクエストのパラメータ。
+ * OpenAIのgpt-5系以降はmax_tokensを400で拒否するためmax_completion_tokensを使う。GeminiのOpenAI互換はmax_tokensのまま。
+ * gpt-6-lunaのChat Completionsはreasoning_effortが"none"のときしかtoolsを使えない（既定はmedium）ため、OpenAIでは"none"を明示する。
+ */
+export function completionParams(model: AIModel) {
+  return model.provider === 'openai'
+    ? { max_completion_tokens: 4096, reasoning_effort: 'none' as const }
+    : { max_tokens: 4096 }
+}
+
 const GEMINI_BASE_URL = 'https://generativelanguage.googleapis.com/v1beta/openai/'
 
 const SYSTEM_PROMPT = `あなたは日本の3D都市モデル（PLATEAU）を使ったドローン飛行計画アプリのAIアシスタントです。
@@ -103,8 +114,7 @@ export function useAIChat(model: AIModel, userApiKey: string | null) {
       while (continueLoop) {
         const stream = await client.chat.completions.create({
           model: model.id,
-          // OpenAIのgpt-5系以降はmax_tokensを400で拒否するためmax_completion_tokensを使う。GeminiのOpenAI互換はmax_tokensのまま
-          ...(model.provider === 'openai' ? { max_completion_tokens: 4096 } : { max_tokens: 4096 }),
+          ...completionParams(model),
           messages: [
             { role: 'system', content: SYSTEM_PROMPT },
             ...historyRef.current,
