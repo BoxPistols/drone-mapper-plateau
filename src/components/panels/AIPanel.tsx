@@ -2,11 +2,21 @@ import { useState, useRef, useEffect } from 'react'
 import { useAIChat, AI_MODELS, DEFAULT_MODEL, type AIModel } from '../../ai/useAIChat'
 
 const LS_KEY_MODEL = 'drone-ai-model'
+const HAS_PREMIUM_MODEL = AI_MODELS.some((m) => m.tier === 'premium')
 const SS_KEY_APIKEY = 'drone-ai-user-key' // sessionStorage（タブ閉じで消える）
 
 function loadModel(): AIModel {
   const saved = localStorage.getItem(LS_KEY_MODEL)
   return AI_MODELS.find((m) => m.id === saved) ?? DEFAULT_MODEL
+}
+
+// 有料枠が無いあいだはキー入力を出さないので、以前のタブで保存したキーもここで消す
+function loadUserApiKey(): string {
+  if (!HAS_PREMIUM_MODEL) {
+    sessionStorage.removeItem(SS_KEY_APIKEY)
+    return ''
+  }
+  return sessionStorage.getItem(SS_KEY_APIKEY) ?? ''
 }
 
 const SUGGESTIONS = [
@@ -19,7 +29,7 @@ const SUGGESTIONS = [
 
 export function AIPanel() {
   const [selectedModel, setSelectedModel] = useState<AIModel>(loadModel)
-  const [userApiKey, setUserApiKey] = useState<string>(sessionStorage.getItem(SS_KEY_APIKEY) ?? '')
+  const [userApiKey, setUserApiKey] = useState<string>(loadUserApiKey)
   const [showSettings, setShowSettings] = useState(false)
 
   const { messages, loading, error, sendMessage, clearHistory } = useAIChat(
@@ -121,28 +131,33 @@ export function AIPanel() {
             })}
           </div>
 
-          <label className="ai-settings-label" style={{ marginTop: 12 }}>
-            Gemini API キー
-            <span className="ai-settings-hint">入力すると Gemini 2.5 Pro が使えます</span>
-          </label>
-          <div className="ai-key-input-wrap">
-            <input
-              type="password"
-              className="ai-key-input"
-              value={userApiKey}
-              onChange={(e) => handleKeyChange(e.target.value)}
-              placeholder="sk-..."
-              spellCheck={false}
-            />
-            {userApiKey && (
-              <button className="ai-key-clear" onClick={() => handleKeyChange('')} title="キーを削除">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} width={14} height={14}>
-                  <path strokeLinecap="round" d="M6 18L18 6M6 6l12 12" />
-                </svg>
-              </button>
-            )}
-          </div>
-          <p className="ai-settings-note">キーはセッション内のみ保持（タブを閉じると消えます）</p>
+          {/* キーは有料枠のモデルでしか使わないため、有料枠が無いあいだは出さない */}
+          {HAS_PREMIUM_MODEL && (
+            <>
+              <label className="ai-settings-label" style={{ marginTop: 12 }}>
+                Gemini API キー
+                <span className="ai-settings-hint">入力すると有料枠のモデルが使えます</span>
+              </label>
+              <div className="ai-key-input-wrap">
+                <input
+                  type="password"
+                  className="ai-key-input"
+                  value={userApiKey}
+                  onChange={(e) => handleKeyChange(e.target.value)}
+                  placeholder="sk-..."
+                  spellCheck={false}
+                />
+                {userApiKey && (
+                  <button className="ai-key-clear" onClick={() => handleKeyChange('')} title="キーを削除">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} width={14} height={14}>
+                      <path strokeLinecap="round" d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                  </button>
+                )}
+              </div>
+              <p className="ai-settings-note">キーはセッション内のみ保持（タブを閉じると消えます）</p>
+            </>
+          )}
         </div>
       )}
 
