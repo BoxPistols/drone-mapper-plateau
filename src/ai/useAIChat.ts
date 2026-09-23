@@ -2,7 +2,7 @@
  * AIチャット用 React Hook — マルチモデル対応
  *
  * 無料枠: gpt-6-luna / Gemini 3.8 Flash（アプリ側キー）
- * 有料枠: gemini-2.5-pro（ユーザー自身のGemini APIキー）
+ * 有料枠: 現在なし（gemini-2.5-proは新規利用者に404を返すため外した）
  */
 import { useState, useCallback, useRef } from 'react'
 import OpenAI from 'openai'
@@ -20,11 +20,10 @@ export interface AIModel {
 }
 
 // gpt-5.4系（nano / mini）は提供終了し、後継のgpt-6-lunaを無料枠に置く。
-// 有料枠は Gemini Pro が担う（Pro は Gemini の無料枠対象外のため自前キーが要る）
+// 有料枠のgemini-2.5-proは新規利用者に404を返すため外した。保存値に残っていてもloadModelの照合でDEFAULT_MODELに戻る
 export const AI_MODELS: AIModel[] = [
   { id: 'gpt-6-luna',        label: 'GPT-6 Luna',        provider: 'openai', tier: 'free' },
   { id: 'gemini-3.8-flash',  label: 'Gemini 3.8 Flash',  provider: 'gemini', tier: 'free' },
-  { id: 'gemini-2.5-pro',    label: 'Gemini 2.5 Pro',    provider: 'gemini', tier: 'premium' },
 ]
 
 export const DEFAULT_MODEL = AI_MODELS[0] // gpt-6-luna
