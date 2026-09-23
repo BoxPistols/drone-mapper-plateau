@@ -10,6 +10,15 @@ function loadModel(): AIModel {
   return AI_MODELS.find((m) => m.id === saved) ?? DEFAULT_MODEL
 }
 
+// 有料枠が無いあいだはキー入力を出さないので、以前のタブで保存したキーもここで消す
+function loadUserApiKey(): string {
+  if (!HAS_PREMIUM_MODEL) {
+    sessionStorage.removeItem(SS_KEY_APIKEY)
+    return ''
+  }
+  return sessionStorage.getItem(SS_KEY_APIKEY) ?? ''
+}
+
 const SUGGESTIONS = [
   '台東区の浅草上空を巡回する飛行計画を作って',
   '現在の飛行計画の状態を教えて',
@@ -20,7 +29,7 @@ const SUGGESTIONS = [
 
 export function AIPanel() {
   const [selectedModel, setSelectedModel] = useState<AIModel>(loadModel)
-  const [userApiKey, setUserApiKey] = useState<string>(sessionStorage.getItem(SS_KEY_APIKEY) ?? '')
+  const [userApiKey, setUserApiKey] = useState<string>(loadUserApiKey)
   const [showSettings, setShowSettings] = useState(false)
 
   const { messages, loading, error, sendMessage, clearHistory } = useAIChat(
