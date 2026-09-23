@@ -1,7 +1,7 @@
 /**
  * AIチャット用 React Hook — マルチモデル対応
  *
- * 無料枠: gpt-6-luna / Gemini 3.8 Flash（アプリ側キー）
+ * 無料枠: gpt-6-luna / Gemini 3.5 Flash-Lite（アプリ側キー）
  * 有料枠: 現在なし（gemini-2.5-proは新規利用者に404を返すため外した）
  */
 import { useState, useCallback, useRef } from 'react'
@@ -21,12 +21,24 @@ export interface AIModel {
 
 // gpt-5.4系（nano / mini）は提供終了し、後継のgpt-6-lunaを無料枠に置く。
 // 有料枠のgemini-2.5-proは新規利用者に404を返すため外した。保存値に残っていてもloadModelの照合でDEFAULT_MODELに戻る
+// 無料枠のgemini-3.8-flashは2026-09-23夜から503が続き応答を確認できなかったため、この条件で応答を確認したgemini-3.5-flash-liteに差し替えた
 export const AI_MODELS: AIModel[] = [
-  { id: 'gpt-6-luna',        label: 'GPT-6 Luna',        provider: 'openai', tier: 'free' },
-  { id: 'gemini-3.8-flash',  label: 'Gemini 3.8 Flash',  provider: 'gemini', tier: 'free' },
+  { id: 'gpt-6-luna',            label: 'GPT-6 Luna',            provider: 'openai', tier: 'free' },
+  { id: 'gemini-3.5-flash-lite', label: 'Gemini 3.5 Flash-Lite', provider: 'gemini', tier: 'free' },
 ]
 
 export const DEFAULT_MODEL = AI_MODELS[0] // gpt-6-luna
+
+// 差し替えた旧IDの移行先。保存値に残っていれば同じプロバイダの後継に寄せる
+const REPLACED_MODEL_IDS: Record<string, string> = {
+  'gemini-3.8-flash': 'gemini-3.5-flash-lite',
+}
+
+/** 保存値のIDを一覧と照合する。差し替えた旧IDは後継に、それ以外の一覧外（外したモデルや不正値）はDEFAULT_MODELに戻す */
+export function findModel(id: string | null): AIModel {
+  const resolved = (id && REPLACED_MODEL_IDS[id]) || id
+  return AI_MODELS.find((m) => m.id === resolved) ?? DEFAULT_MODEL
+}
 
 /**
  * プロバイダごとに出し分けるリクエストのパラメータ。

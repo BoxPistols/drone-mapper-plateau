@@ -1,13 +1,12 @@
 import { useState, useRef, useEffect } from 'react'
-import { useAIChat, AI_MODELS, DEFAULT_MODEL, type AIModel } from '../../ai/useAIChat'
+import { useAIChat, AI_MODELS, findModel, type AIModel } from '../../ai/useAIChat'
 
 const LS_KEY_MODEL = 'drone-ai-model'
 const HAS_PREMIUM_MODEL = AI_MODELS.some((m) => m.tier === 'premium')
 const SS_KEY_APIKEY = 'drone-ai-user-key' // sessionStorage（タブ閉じで消える）
 
 function loadModel(): AIModel {
-  const saved = localStorage.getItem(LS_KEY_MODEL)
-  return AI_MODELS.find((m) => m.id === saved) ?? DEFAULT_MODEL
+  return findModel(localStorage.getItem(LS_KEY_MODEL))
 }
 
 // 有料枠が無いあいだはキー入力を出さないので、以前のタブで保存したキーもここで消す
