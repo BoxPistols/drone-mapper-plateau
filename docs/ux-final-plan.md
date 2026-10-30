@@ -59,7 +59,7 @@
 |---|---|---|
 | **写真・動画（Media）** | ・3D モデルビューワーはアップロードした glb を読まず、固定のワイヤーフレーム箱を表示（`ModelViewer3D` の `_item` 未使用、`MediaPanel` 内 `ModelViewer` も同様）<br>・動画はサンプルが Canvas 生成のダミー。アップロードした動画は `videoUrl` を保存しないため再生不可（プレースホルダー表示）<br>・写真は base64 で持つが persist で除外され、リロードで消える（カードだけ残る）<br>・撮影位置を持つが地図に出ない。記録との紐付け UI がない<br>・three.js を同梱（バンドル増） | **削除**（v1.0）。`MediaPanel/MediaViewer/PhotoViewer/VideoViewer/ModelViewer3D`、`media-viewer.css`（466行）、`three` 依存、`MediaItem` 型、store の `media` |
 | **飛行記録（Records）** | 手入力フォームのみ。シミュレーション完了 → 記録作成の導線がない（`MissionComplete` に保存ボタンなし）。計画詳細の「飛行記録」ボタンは空の記録を作って記録タブに飛ばすだけ | **削除**（v1.0）。代替として `MissionComplete` に「この飛行の結果を計画メモに残す」1ボタン（任意、Phase 2） |
-| **AI アシスタント** | ブラウザから API キーを直接使う構造。`deploy.yml` は `VITE_CESIUM_TOKEN` しか渡していないため、**公開版では常に「アプリ側キー未設定」**で使えないタブが表示される。`add_waypoints` は `groundAlt=0` で WP を作るためマーカーが地形に沈む | **フラグで非表示**（キー未設定時はタブを出さない）。本番化にはサーバープロキシが必須なので v1.0 スコープ外。コードは残す |
+| **AI アシスタント** | ブラウザから API キーを直接使う構造。`deploy.yml` は `VITE_CESIUM_TOKEN` しか渡していないため、**公開版では常に「アプリ側キー未設定」**で使えないタブが表示される。`add_waypoints` は `groundAlt=0` で WP を作るためマーカーが地形に沈む | **公開版では非表示**。AI は API キーをブラウザで直接使う構造（`dangerouslyAllowBrowser`）のため、**公開ビルドには AI キーを渡さない**（`VITE_*` はクライアントバンドルに埋め込まれる）。キーを `.env` に置いたローカル開発ビルドでのみタブが出る。正式に含めるならサーバープロキシ＋非機密フラグ（例: `VITE_ENABLE_AI`）に切り替える。コードは残す |
 | **飛行エリア（ゾーン）** | 描けるが何にも影響しない（A4）。ただし「ゾーンから WP 自動生成（外周／グリッド）」は実用価値がある | **格下げ＋最小限仕上げ**。必須ステップから外し「補助ツール」へ。意味を持たせるため (1) 禁止区域内 WP の警告 (2) `maxAlt` 超過警告 を飛行統計・チェックリストに追加。「エリアからルートを自動生成」を正式な入口として露出 |
 | **目印（ピン）** | 設置・色・メモ。計画との関連なし | **格下げ**。MapPanel 最下部へ。STEP 扱いしない |
 | **計画ステータス**（作成中／承認済み／完了） | 変更しても何も起きない | **削除**、または「シミュレーション完了で自動的に『確認済み』」の1状態だけ残す（推奨: 削除） |
@@ -126,10 +126,11 @@
 | Media 一式削除 | `MediaPanel` `MediaViewer` `PhotoViewer` `VideoViewer` `ModelViewer3D` `media-viewer.css` `three` `@types/three` `MediaItem` `store.media` seed のメディア配列 | `npm ls three` が空。バンドル −約520KB（gzip −131KB） |
 | Records 一式削除 | `RecordsPanel` `FlightRecord` `store.records` `addRecord` 計画詳細の「飛行記録」ボタン `records` タブ | — |
 | persist マイグレーション | `persist` に `version: 2` と `migrate` を追加し、旧 `media`/`records` キーを破棄 | 旧データを持つブラウザで起動時エラーなし |
-| AI タブのフラグ化 | `Sidebar` で `import.meta.env.VITE_OPENAI_API_KEY \|\| VITE_GEMINI_API_KEY` が無ければタブ非表示 | 公開版でタブが消える |
-| 「標高」ボタン削除＋自動化 | `addWaypoint(planId, lon, lat, groundAlt?)` で `groundAlt` 未指定時に `cesiumViewerRef` の `globe.getHeight` を使う（`generateWaypointsFromZone` と同じ手法）。検索追加・AI 追加の呼び出し側から引数を外す | AI/検索で追加した WP が地形に沈まない |
+| AI タブの非表示 | `Sidebar` はアプリ側キーが埋め込まれたビルドでのみタブを出す。**公開ビルド（`deploy.yml`）には AI キーを渡さない**（渡すとクライアントバンドルに含まれる）。将来 AI を正式に含める場合はサーバープロキシ＋非機密フラグに切り替え、キーをクライアントへ渡す選択肢は取らない | 公開版でタブが消える。`deploy.yml` に AI キーの記述がない |
+| 「標高」ボタン削除＋自動化 | `addWaypoint(planId, lon, lat, groundAlt?)` で `groundAlt` 未指定時に `cesiumViewerRef` の `globe.getHeight` を使う（`generateWaypointsFromZone` と同じ手法）。検索追加・AI 追加の呼び出し側から引数を外す | 地形ロード済みの地点では AI/検索で追加した WP が地形に沈まない。`getHeight` が `undefined`（タイル未ロード）のときは Phase 0 では従来どおり 0 で追加し回帰を出さない。非同期取得による後追い更新は Phase 1 の「地盤高の非同期フォールバック」で実装・テストする |
 | 計画ステータス削除 | `PlanStatus` と `status-badge`、`STATUS_LABELS` | — |
-| 死蔵コード削除 | `CesiumViewer.tsx` `CitySelector.tsx` 未使用アセット `index.css` の残骸（`#root` 高さ指定のみ `globals.css` へ移す） | ESLint 警告 0 |
+| 死蔵コード削除 | `CesiumViewer.tsx` `CitySelector.tsx` 未使用アセット `index.css` の残骸（`color-scheme` のみ `globals.css` へ移す） | 未参照ファイル 0 |
+| ESLint 警告の解消 | `CesiumMap` の依存配列（planId のみで再生成する意図を `eslint-disable-line -- 理由` で明示）、未使用 disable 2件の削除、`WelcomeScreen` から `shouldShowWelcome` を `utils/welcomeStorage.ts` へ分離（fast-refresh 警告） | ESLint 警告 0 |
 | `index.html lang="ja"` | — | — |
 
 ### Phase 1 — 動線を1本にする（2〜3日）　担当: 企画・ビジネス / UIBuilder
@@ -144,6 +145,7 @@
 | ウェルカムの初回判定 | `localStorage` 化。「自分でやってみる」→ 計画を自動作成して配置モード開始 | 2回目以降のタブで出ない |
 | エリア・目印の格下げ | MapPanel: STEP 1 の下に「補助ツール」セクション（折りたたみ）としてエリア／目印を移動。「エリアからルートを自動生成」を飛行計画タブの通過ポイント横に昇格 | — |
 | 左クリックでも編集を開く | select モードの左クリックでエンティティ→ポップアップ（右クリックも維持） | ヘルプと一致 |
+| 地盤高の非同期フォールバック | `addWaypoint` で同期 `getHeight` が `undefined` の WP は `groundAlt` 未確定として扱い、`sampleTerrainMostDetailed` で取得後に `updateWaypoint` で後追い更新。失敗時はトーストで通知し 0 のまま残さない。cesium 非依存のロジックは `persistMigrate` と同様に分離してテスト | タイル未ロード地点に追加した WP が後から地形高さに揃う。テストで検証 |
 
 **フェーズ完了時のユーザーテスト（必須）**: 初見 5 名、ヘルプ非参照、「台東区で 3 点置いて飛ばす」。3 分以内 4/5 名。失敗箇所を Phase 2 に反映。
 
@@ -172,7 +174,7 @@
 
 - README・`features.md`・`architecture.md` を現状（モデル名、タブ構成、操作、スプライン）に同期
 - CLAUDE.md のチーム担当ファイルから削除コンポーネントを除去、テーマ方針を更新
-- `deploy.yml` に AI キーを渡すかどうかを明記（渡さない＝AI 非表示が公式）
+- `deploy.yml` には AI キーを渡さないことを README に明記（AI を含める場合はサーバープロキシ＋非機密フラグ）
 - 最終ユーザーテスト（5名）→ DoD 表の実測値を README に記載
 
 ---
@@ -195,7 +197,7 @@
 ## 6. 判断をお願いしたい点（推奨を先に書く）
 
 1. **Records / Media を削除してよいか** — 推奨: 削除。残す場合は「仕上げる」側に回し、最低限 (a) 動画の `videoUrl` 保存 (b) glb の実ロード (c) IndexedDB 永続化 が必要で +4〜5 人日。
-2. **AI を v1.0 に含めるか** — 推奨: 含めない（フラグ非表示）。含めるならサーバープロキシ（Vercel/Netlify Functions 等）が前提。
+2. **AI を v1.0 に含めるか** — 推奨: 含めない（公開ビルドにキーを渡さず非表示）。含めるならサーバープロキシ（Vercel/Netlify Functions 等）＋非機密フラグが前提で、クライアントに API キーを渡す選択肢は取らない。
 3. **ダークモード** — 推奨: 両対応を維持しトークンへ分離。ライト固定にするなら約 100 行削除で済む。
 4. **飛行前チェックリスト** — 推奨: 初回必須・2回目以降は省略可。常時必須にするなら「飛ばしてみたい」初見層の離脱を受け入れる。
 
