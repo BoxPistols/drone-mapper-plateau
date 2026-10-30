@@ -1,18 +1,10 @@
 import { useState } from 'react'
-import { Cartographic, sampleTerrainMostDetailed } from 'cesium'
 import { useDroneStore } from '../../store/droneStore'
 import { PreflightChecklist } from '../PreflightChecklist'
 import { useNominatimSearch } from '../../hooks/useNominatimSearch'
 import { computeFlightStats } from '../../sim/flightPath'
-import { cesiumViewerRef } from '../../sim/cesiumViewerRef'
 import { ACTION_LABELS, ACTION_BADGES } from '../../constants/labels'
-import type { FlightPlan, Waypoint, WaypointAction, PlanStatus } from '../../types'
-
-const STATUS_LABELS: Record<PlanStatus, string> = {
-  draft:     '作成中',
-  approved:  '承認済み',
-  completed: '完了',
-}
+import type { FlightPlan, Waypoint, WaypointAction } from '../../types'
 
 // 飛行統計は sim/flightPath.computeFlightStats に一本化（弧長ベースで実飛行と一致）
 
@@ -254,10 +246,10 @@ interface PlanDetailProps {
 
 function PlanDetail({ plan, onBack }: PlanDetailProps) {
   const {
-    updatePlan, deletePlan, addRecord,
+    updatePlan, deletePlan,
     mapMode, setMapMode, setActivePlanId, activePlanId,
     addWaypoint, updateWaypoint, deleteWaypoint, startSimulation,
-    setSidebarTab, simulation, addToast,
+    simulation, addToast,
     zones, generateWaypointsFromZone,
   } = useDroneStore()
 
@@ -273,47 +265,6 @@ function PlanDetail({ plan, onBack }: PlanDetailProps) {
     altAGL: 50,
     speedMS: 5,
   })
-  const [fetchingElevation, setFetchingElevation] = useState(false)
-  const [elevProgress, setElevProgress] = useState({ current: 0, total: 0 })
-
-  // 地盤高の一括取得。
-  // 旧実装は国土地理院APIの「標高」（ジオイド基準）を使っていたが、Cesium地形の高さは
-  // 楕円体基準のため関東で約40mの基準面差が混入し、WPマーカーが地形からずれていた。
-  // 描画と同じ Cesium 地形からサンプリングすることで基準面を構造的に一致させる。
-  const handleFetchElevations = async () => {
-    const viewer = cesiumViewerRef.current
-    const wps = plan.waypoints
-    if (!viewer || wps.length === 0) return
-    const total = wps.length
-    setFetchingElevation(true)
-    setElevProgress({ current: 0, total })
-    let updated = 0
-    try {
-      const positions = wps.map((w) => Cartographic.fromDegrees(w.lon, w.lat))
-      const sampled = await sampleTerrainMostDetailed(viewer.terrainProvider, positions)
-      sampled.forEach((c, i) => {
-        if (Number.isFinite(c.height)) {
-          updateWaypoint(plan.id, wps[i].id, { groundAlt: c.height })
-          updated++
-        }
-        setElevProgress({ current: i + 1, total })
-      })
-    } catch {
-      // 地形プロバイダ未対応（トークン無し等）: ロード済みタイルから同期取得にフォールバック
-      wps.forEach((w, i) => {
-        const h = viewer.scene.globe.getHeight(Cartographic.fromDegrees(w.lon, w.lat))
-        if (h != null) {
-          updateWaypoint(plan.id, w.id, { groundAlt: h })
-          updated++
-        }
-        setElevProgress({ current: i + 1, total })
-      })
-    }
-    setFetchingElevation(false)
-    if (updated > 0) addToast(`${updated}/${total} ポイントの地盤高を地形から取得しました`, 'success')
-    else addToast('地盤高を取得できませんでした。地形の読み込み後にお試しください', 'warning')
-  }
-
   const isActive = activePlanId === plan.id
   const isSimulating = simulation?.planId === plan.id
   const stats = computeFlightStats(plan.waypoints)
@@ -348,7 +299,6 @@ function PlanDetail({ plan, onBack }: PlanDetailProps) {
             </svg>
             一覧へ戻る
           </button>
-          <span className={`status-badge status-${plan.status}`}>{STATUS_LABELS[plan.status]}</span>
         </div>
 
         {/* 基本情報 */}
@@ -380,14 +330,6 @@ function PlanDetail({ plan, onBack }: PlanDetailProps) {
                   onChange={(e) => updatePlan(plan.id, { maxAltAGL: Number(e.target.value) })} />
                 <span>m</span>
               </div>
-            </label>
-            <label>状態
-              <select value={plan.status}
-                onChange={(e) => updatePlan(plan.id, { status: e.target.value as PlanStatus })}>
-                {Object.entries(STATUS_LABELS).map(([v, l]) => (
-                  <option key={v} value={v}>{l}</option>
-                ))}
-              </select>
             </label>
           </div>
           <textarea
@@ -465,22 +407,7 @@ function PlanDetail({ plan, onBack }: PlanDetailProps) {
                 ゾーン
               </button>
             )}
-            <button
-              className="wp-tool-btn"
-              disabled={fetchingElevation || plan.waypoints.length === 0}
-              onClick={handleFetchElevations}
-              title="3D地形から各ポイントの地盤高を一括取得（描画と同じ基準面）"
-            >
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} width={14} height={14}><path d="M8 3v2m8-2v2M3 8h2m14 0h2M7 14l3-3 2 2 4-4"/></svg>
-              {fetchingElevation ? `${elevProgress.current}/${elevProgress.total}` : '標高'}
-            </button>
           </div>
-          {/* 標高取得プログレスバー */}
-          {fetchingElevation && (
-            <div className="wp-elev-progress">
-              <div className="wp-elev-progress-bar" style={{ width: `${(elevProgress.current / elevProgress.total) * 100}%` }} />
-            </div>
-          )}
 
           {/* Phase 2: 地名検索→WP追加 */}
           {showWpSearch && (
@@ -616,20 +543,6 @@ function PlanDetail({ plan, onBack }: PlanDetailProps) {
             {isActive ? '編集終了' : 'ポイント編集'}
           </button>
 
-          <button
-            className="action-btn record-btn"
-            onClick={() => {
-              addRecord(plan.id)
-              setSidebarTab('records')
-              addToast('飛行記録を作成しました', 'success')
-            }}
-          >
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
-              <path strokeLinecap="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
-            </svg>
-            飛行記録
-          </button>
-
           {/* エクスポートメニュー */}
           <div className="export-menu-wrap">
             <button
@@ -725,7 +638,6 @@ export function PlansPanel() {
               >
                 <div className="plan-card-header">
                   <span className="plan-card-name">{plan.name}</span>
-                  <span className={`status-badge status-${plan.status}`}>{STATUS_LABELS[plan.status]}</span>
                 </div>
                 <div className="plan-card-meta">
                   {plan.pilotName && <span>{plan.pilotName}</span>}

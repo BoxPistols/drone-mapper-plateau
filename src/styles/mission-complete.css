@@ -256,9 +256,6 @@
   /* 飛行統計カード */
   .plan-stat { background: var(--bg-elevated); }
 
-  /* ステータスバッジ（ダーク調整） */
-  .status-draft { background: var(--bg-elevated); color: var(--text-muted); border-color: var(--border); }
-
   /* シミュレーション中インジケーター */
   .sim-indicator { background: rgba(46,160,67,0.12); border-color: #2ea043; color: #56d364; }
   .sim-indicator-dot { background: #56d364; }
