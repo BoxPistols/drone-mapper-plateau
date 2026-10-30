@@ -2,6 +2,7 @@
 
 /* ── カラーシステム（ライトテーマ・WCAG AA準拠）── */
 :root {
+  color-scheme: light dark; /* 旧 index.css から移設: ダーク時にフォーム部品・スクロールバーを追従させる */
   --bg-base:      #EFF3F7;
   --bg-panel:     #FFFFFF;
   --bg-surface:   #FFFFFF;

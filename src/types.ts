@@ -57,8 +57,6 @@ export interface Waypoint {
 }
 
 // ── 飛行計画 ───────────────────────────────────
-export type PlanStatus = 'draft' | 'approved' | 'completed'
-
 export interface FlightPlan {
   id: string
   name: string
@@ -70,50 +68,8 @@ export interface FlightPlan {
   pilotName?: string
   plannedDate?: string
   estimatedMinutes?: number
-  status: PlanStatus
   createdAt: string
   updatedAt: string
-}
-
-// ── 飛行記録 ───────────────────────────────────
-export type RecordStatus = 'planned' | 'in_progress' | 'completed' | 'cancelled'
-
-export interface FlightRecord {
-  id: string
-  planId?: string
-  name: string
-  pilot: string
-  date: string
-  startTime?: string
-  endTime?: string
-  weather?: string
-  windMS?: number
-  maxAltActual?: number
-  distanceM?: number
-  notes?: string
-  status: RecordStatus
-  createdAt: string
-}
-
-// ── 撮影データ ─────────────────────────────────
-export type MediaType = 'photo' | 'video' | 'panorama' | 'model3d'
-
-export interface MediaItem {
-  id: string
-  recordId?: string
-  planId?: string
-  name: string
-  type: MediaType
-  lon?: number
-  lat?: number
-  altM?: number
-  timestamp: string
-  sizeKB?: number
-  notes?: string
-  dataUrl?: string // thumbnail base64
-  duration?: number // 動画の長さ（秒）
-  modelUrl?: string // 3Dモデル参照用
-  videoUrl?: string // HTML5 video 再生用URL
 }
 
 // ── シミュレーション ────────────────────────────
@@ -131,7 +87,7 @@ export interface SimState {
 }
 
 // ── アプリタブ ─────────────────────────────────
-export type SidebarTab = 'map' | 'plans' | 'records' | 'media' | 'ai'
+export type SidebarTab = 'map' | 'plans' | 'ai'
 
 // ── トースト通知 ───────────────────────────────
 export interface Toast {

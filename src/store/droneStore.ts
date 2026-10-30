@@ -5,13 +5,12 @@ import { droneSimBridge } from '../sim/droneSimBridge'
 import { buildFlightPhases, totalFlightMs, sampleAtElapsed } from '../sim/flightPath'
 import { cesiumViewerRef } from '../sim/cesiumViewerRef'
 import { generatePerimeterPoints, generateGridPoints } from '../utils/geoUtils'
+import { PERSIST_VERSION, migratePersistedState, type PersistedDroneState } from './persistMigrate'
 import type {
   CityConfig,
   DronePin,
   FlightZone,
   FlightPlan,
-  FlightRecord,
-  MediaItem,
   MapMode,
   SidebarTab,
   BuildingProperties,
@@ -49,26 +48,6 @@ export const PLATEAU_CITIES: CityConfig[] = [
 function uid() {
   return `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
 }
-
-// サンプルメディア用（Unsplash 固定URL — ドローン/航空写真）
-const AERIAL_PHOTOS = [
-  'https://images.unsplash.com/photo-1506947411487-a56738267384?w=640&h=480&fit=crop', // 都市俯瞰
-  'https://images.unsplash.com/photo-1477959858617-67f85cf4f1df?w=640&h=480&fit=crop', // 夜景都市
-  'https://images.unsplash.com/photo-1480714378408-67cf0d13bc1b?w=640&h=480&fit=crop', // 都市空撮
-  'https://images.unsplash.com/photo-1449824913935-59a10b8d2000?w=640&h=480&fit=crop', // 都市風景
-  'https://images.unsplash.com/photo-1514565131-fce0801e5785?w=640&h=480&fit=crop', // 東京タワー
-  'https://images.unsplash.com/photo-1540959733332-eab4deabeeaf?w=640&h=480&fit=crop', // 東京渋谷
-  'https://images.unsplash.com/photo-1493976040374-85c8e12f0c0e?w=640&h=480&fit=crop', // 日本寺社
-  'https://images.unsplash.com/photo-1528360983277-13d401cdc186?w=640&h=480&fit=crop', // 日本街並み
-]
-const PANORAMA_PHOTOS = [
-  'https://images.unsplash.com/photo-1513407030348-c983a97b98d8?w=1280&h=480&fit=crop', // 都市パノラマ
-  'https://images.unsplash.com/photo-1444723121867-7a241cacace9?w=1280&h=480&fit=crop', // 空撮パノラマ
-]
-const VIDEO_THUMBS = [
-  'https://images.unsplash.com/photo-1473968512647-3e447244af8f?w=640&h=360&fit=crop', // ドローン飛行
-  'https://images.unsplash.com/photo-1527977966376-1c8408f9f108?w=640&h=360&fit=crop', // 航空映像
-]
 
 interface DroneStore {
   // 都市
@@ -108,19 +87,6 @@ interface DroneStore {
   updateWaypoint: (planId: string, wpId: string, patch: Partial<Waypoint>) => void
   deleteWaypoint: (planId: string, wpId: string) => void
   moveWaypoint: (planId: string, wpId: string, dir: 'up' | 'down') => void
-
-  // 飛行記録
-  records: FlightRecord[]
-  addRecord: (planId?: string) => FlightRecord
-  updateRecord: (id: string, patch: Partial<FlightRecord>) => void
-  deleteRecord: (id: string) => void
-
-  // 撮影データ
-  media: MediaItem[]
-  addMedia: (item: Omit<MediaItem, 'id'>) => void
-  deleteMedia: (id: string) => void
-  selectedMediaId: string | null
-  setSelectedMediaId: (id: string | null) => void
 
   // ゾーンからWP生成
   generateWaypointsFromZone: (planId: string, zoneId: string, opts: {
@@ -214,7 +180,7 @@ export const useDroneStore = create<DroneStore>()(
         const plan: FlightPlan = {
           id: uid(), name: `飛行計画 ${get().plans.length + 1}`,
           cityId: get().selectedCity.id, waypoints: [],
-          maxAltAGL: 60, status: 'draft',
+          maxAltAGL: 60,
           createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(),
         }
         set((s) => ({ plans: [...s.plans, plan], activePlanId: plan.id }))
@@ -231,14 +197,19 @@ export const useDroneStore = create<DroneStore>()(
           plans: s.plans.filter((p) => p.id !== id),
           activePlanId: s.activePlanId === id ? null : s.activePlanId,
         })),
-      addWaypoint: (planId, lon, lat, groundAlt = 0) => {
+      addWaypoint: (planId, lon, lat, groundAlt) => {
         const plan = get().plans.find((p) => p.id === planId)
         if (!plan) return
         const prev = plan.waypoints[plan.waypoints.length - 1]
+        // 地盤高(MSL)が渡されない場合（地名検索・AI追加）は描画と同じ Cesium 地形から取得する。
+        // 0 のままだとマーカー・ルート線が地形に沈むため（旧「標高」ボタンの役割を自動化）
+        const sampledGround = groundAlt
+          ?? cesiumViewerRef.current?.scene.globe.getHeight(Cartographic.fromDegrees(lon, lat))
+          ?? 0
         const wp: Waypoint = {
           id: uid(), lon, lat,
           altAGL:    prev?.altAGL  ?? 50,  // 前WPの地上高を引き継ぐ
-          groundAlt,                        // クリック地点の地盤高(MSL)
+          groundAlt: sampledGround,        // 地盤高(MSL)
           speedMS:   prev?.speedMS ?? 5,
           action: 'none',
         }
@@ -274,34 +245,6 @@ export const useDroneStore = create<DroneStore>()(
         ;[wps[idx], wps[newIdx]] = [wps[newIdx], wps[idx]]
         get().updatePlan(planId, { waypoints: wps })
       },
-
-      // 飛行記録
-      records: [],
-      addRecord: (planId) => {
-        const plan = planId ? get().plans.find((p) => p.id === planId) : undefined
-        const rec: FlightRecord = {
-          id: uid(),
-          planId,
-          name: plan ? `${plan.name} 記録` : `飛行記録 ${get().records.length + 1}`,
-          pilot: plan?.pilotName ?? '',
-          date: new Date().toISOString().slice(0, 10),
-          status: 'planned',
-          createdAt: new Date().toISOString(),
-        }
-        set((s) => ({ records: [rec, ...s.records] }))
-        return rec
-      },
-      updateRecord: (id, patch) =>
-        set((s) => ({ records: s.records.map((r) => (r.id === id ? { ...r, ...patch } : r)) })),
-      deleteRecord: (id) => set((s) => ({ records: s.records.filter((r) => r.id !== id) })),
-
-      // メディア
-      media: [],
-      addMedia: (item) =>
-        set((s) => ({ media: [{ ...item, id: uid() }, ...s.media] })),
-      deleteMedia: (id) => set((s) => ({ media: s.media.filter((m) => m.id !== id) })),
-      selectedMediaId: null,
-      setSelectedMediaId: (id) => set({ selectedMediaId: id }),
 
       // ゾーンからWP生成
       generateWaypointsFromZone: (planId, zoneId, opts) => {
@@ -445,43 +388,9 @@ export const useDroneStore = create<DroneStore>()(
           id: planId, name: '浅草〜隅田川 試験飛行', cityId: city.id,
           waypoints, maxAltAGL: 120, droneModel: 'DJI Mavic 3E',
           pilotName: '山田 太郎', plannedDate: new Date().toISOString().slice(0, 10),
-          estimatedMinutes: 15, status: 'draft',
+          estimatedMinutes: 15,
           createdAt: now, updatedAt: now,
         }
-
-        const recId = uid()
-        const records: FlightRecord[] = [
-          {
-            id: recId, planId, name: '浅草〜隅田川 試験飛行 記録', pilot: '山田 太郎',
-            date: new Date().toISOString().slice(0, 10),
-            weather: '晴れ', windMS: 3.5, maxAltActual: 98, distanceM: 2400,
-            notes: 'ウェイポイント5でホバリング撮影実施', status: 'completed',
-            createdAt: now,
-          },
-        ]
-
-        const media: MediaItem[] = [
-          // ── ギャラリー写真（8枚） ──
-          { id: uid(), recordId: recId, name: 'WP2_正面_01.jpg', type: 'photo', lon: 139.7980, lat: 35.7130, altM: 65, timestamp: now, sizeKB: 4200, dataUrl: AERIAL_PHOTOS[0], notes: '浅草寺 正面' },
-          { id: uid(), recordId: recId, name: 'WP2_正面_02.jpg', type: 'photo', lon: 139.7981, lat: 35.7131, altM: 65, timestamp: now, sizeKB: 3800, dataUrl: AERIAL_PHOTOS[1] },
-          { id: uid(), recordId: recId, name: 'WP2_俯瞰_03.jpg', type: 'photo', lon: 139.7980, lat: 35.7130, altM: 65, timestamp: now, sizeKB: 5100, dataUrl: AERIAL_PHOTOS[2], notes: '俯瞰ショット' },
-          { id: uid(), recordId: recId, name: 'WP4_隅田川_04.jpg', type: 'photo', lon: 139.8010, lat: 35.7195, altM: 85, timestamp: now, sizeKB: 4700, dataUrl: AERIAL_PHOTOS[3] },
-          { id: uid(), recordId: recId, name: 'WP4_隅田川_05.jpg', type: 'photo', lon: 139.8011, lat: 35.7196, altM: 85, timestamp: now, sizeKB: 3900, dataUrl: AERIAL_PHOTOS[4] },
-          { id: uid(), recordId: recId, name: 'WP4_スカイツリー_06.jpg', type: 'photo', lon: 139.8012, lat: 35.7195, altM: 85, timestamp: now, sizeKB: 5500, dataUrl: AERIAL_PHOTOS[5], notes: 'スカイツリー方面' },
-          { id: uid(), recordId: recId, name: 'WP5_ホバー_07.jpg', type: 'photo', lon: 139.7960, lat: 35.7180, altM: 55, timestamp: now, sizeKB: 4100, dataUrl: AERIAL_PHOTOS[6] },
-          { id: uid(), recordId: recId, name: 'WP5_ホバー_08.jpg', type: 'photo', lon: 139.7960, lat: 35.7180, altM: 55, timestamp: now, sizeKB: 3600, dataUrl: AERIAL_PHOTOS[7] },
-
-          // ── パノラマ写真（2枚） ──
-          { id: uid(), recordId: recId, name: 'WP2_パノラマ_360.jpg', type: 'panorama', lon: 139.7980, lat: 35.7130, altM: 65, timestamp: now, sizeKB: 18200, dataUrl: PANORAMA_PHOTOS[0], notes: 'WP2地点 360°パノラマ' },
-          { id: uid(), recordId: recId, name: 'WP5_パノラマ_360.jpg', type: 'panorama', lon: 139.7960, lat: 35.7180, altM: 55, timestamp: now, sizeKB: 15800, dataUrl: PANORAMA_PHOTOS[1], notes: 'WP5ホバリング地点 360°' },
-
-          // ── 動画（2本） ──
-          { id: uid(), recordId: recId, name: 'WP2-WP3_飛行映像.mp4', type: 'video', lon: 139.7980, lat: 35.7130, altM: 65, timestamp: now, sizeKB: 125000, duration: 45, dataUrl: VIDEO_THUMBS[0], videoUrl: 'procedural', notes: 'WP2→WP3 飛行中撮影' },
-          { id: uid(), recordId: recId, name: 'WP5_ホバー撮影.mp4', type: 'video', lon: 139.7960, lat: 35.7180, altM: 55, timestamp: now, sizeKB: 82000, duration: 30, dataUrl: VIDEO_THUMBS[1], videoUrl: 'procedural', notes: 'WP5 ホバリング中360°撮影' },
-
-          // ── 3Dモデル（1つ） ──
-          { id: uid(), recordId: recId, name: '浅草寺_点群モデル.glb', type: 'model3d', lon: 139.7967, lat: 35.7148, altM: 50, timestamp: now, sizeKB: 45000, notes: 'WP2周辺の点群データから生成', modelUrl: 'inline' },
-        ]
 
         // 総飛行時間・初期位置/方位を本番シミュレーションと同じ定義で計算
         const phases = buildFlightPhases(waypoints)
@@ -500,8 +409,6 @@ export const useDroneStore = create<DroneStore>()(
           selectedCity: city,
           pins, zones,
           plans: [plan], activePlanId: planId,
-          records,
-          media,
           mapPopup: null,
           sidebarTab: 'plans',
           // シミュレーション自動開始（追従カメラ）
@@ -518,19 +425,14 @@ export const useDroneStore = create<DroneStore>()(
     }),
     {
       name: 'drone-store',
+      version: PERSIST_VERSION,
+      migrate: migratePersistedState,
       // シミュレーション状態は永続化しない
-      partialize: (s) => ({
+      partialize: (s): PersistedDroneState => ({
         selectedCity: s.selectedCity,
         pins: s.pins,
         zones: s.zones,
         plans: s.plans,
-        records: s.records,
-        media: s.media.map((m) => ({
-          ...m,
-          // base64データは巨大なので除外、URL文字列は軽量なので保持
-          dataUrl: m.dataUrl?.startsWith('data:') ? undefined : m.dataUrl,
-          videoUrl: undefined,
-        })),
       }),
     }
   )

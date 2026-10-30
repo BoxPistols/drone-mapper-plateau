@@ -970,7 +970,7 @@ export function CesiumMap() {
         })
       }
     }
-  }, [store.simulation?.planId]) // planIdが変わった時だけエンティティを再生成
+  }, [store.simulation?.planId]) // eslint-disable-line react-hooks/exhaustive-deps -- planIdが変わった時だけエンティティを再生成
 
   // ── カメラモード変更（free に戻す時 lookAt 解除 + バンク角リセット）
   useEffect(() => {
@@ -987,7 +987,7 @@ export function CesiumMap() {
       }
     }
     // cameraMode の変化時のみ実行したいので simulation 全体は依存に含めない
-  }, [store.simulation?.cameraMode]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [store.simulation?.cameraMode])
 
   // ── 場所検索 flyTo イベント ──────────────────
   useEffect(() => {

@@ -7,8 +7,8 @@ import { MapToolbar } from './components/map/MapToolbar'
 import { SimPlayer } from './components/map/SimPlayer'
 import { HelpModal } from './components/HelpModal'
 import { MapEntityPopup } from './components/map/MapEntityPopup'
-import { MediaViewer } from './components/MediaViewer'
-import { WelcomeScreen, shouldShowWelcome } from './components/WelcomeScreen'
+import { WelcomeScreen } from './components/WelcomeScreen'
+import { shouldShowWelcome } from './utils/welcomeStorage'
 import { useDroneStore } from './store/droneStore'
 import './App.css'
 
@@ -177,7 +177,7 @@ function App() {
             title="データをリセット"
             aria-label="データをリセット"
             onClick={() => {
-              if (confirm('すべてのデータをリセットしますか？\n（ピン・ゾーン・飛行計画・記録・撮影データが削除されます）')) {
+              if (confirm('すべてのデータをリセットしますか？\n（目印・飛行エリア・飛行計画が削除されます）')) {
                 localStorage.removeItem('drone-store')
                 sessionStorage.clear()
                 location.reload()
@@ -206,7 +206,6 @@ function App() {
           )}
           {simulation && <SimPlayer />}
           <MapEntityPopup />
-          <MediaViewer />
           <StepGuide />
         </div>
       </div>
