@@ -202,6 +202,8 @@ textarea { resize: vertical; }
 .action-btn.sim-btn {
   background: #dcfce7; border-color: #86efac; color: #15803d;
   font-size: 14px; font-weight: 700;
+  /* 計画詳細の主操作なので1行を占有する */
+  flex-basis: 100%; min-height: 44px;
 }
 .action-btn.sim-btn:hover:not(:disabled) { background: var(--success); color: #fff; border-color: var(--success); }
 .action-btn.sim-btn:disabled { opacity: 0.45; cursor: not-allowed; }
@@ -628,3 +630,21 @@ textarea { resize: vertical; }
 .zone-gen-panel select:focus,
 .zone-gen-panel input:focus { outline: none; border-color: var(--accent); }
 .zone-gen-panel .action-btn.primary { grid-column: 1 / -1; }
+
+/* ── 補助ツール（飛行エリア・目印）の折りたたみ ── */
+.panel-aux { border-top: 1.5px solid var(--border); }
+.panel-aux-summary {
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  min-height: 44px; padding: 10px 16px;
+  font-size: 13px; font-weight: 700; color: var(--text-primary);
+  cursor: pointer; list-style: none;
+}
+.panel-aux-summary::-webkit-details-marker { display: none; }
+.panel-aux-summary::after {
+  content: ''; width: 8px; height: 8px; flex-shrink: 0;
+  border-right: 2px solid var(--text-muted); border-bottom: 2px solid var(--text-muted);
+  transform: rotate(45deg); transition: transform 0.15s;
+}
+.panel-aux[open] > .panel-aux-summary::after { transform: rotate(-135deg); }
+.panel-aux-summary:hover { background: var(--bg-hover); }
+.panel-aux-meta { margin-left: auto; font-size: 12px; font-weight: 500; color: var(--text-muted); }

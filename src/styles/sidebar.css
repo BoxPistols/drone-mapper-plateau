@@ -69,3 +69,54 @@
   scrollbar-width: thin;
   scrollbar-color: var(--border) transparent;
 }
+
+/* ── ドロワー（タブレット縦・スマートフォン）──
+   幅 768px 以下ではタブ列だけを常に表示し、パネルは地図の上に重ねる。
+   地図の幅を削らないことで、ルート配置やシミュレーションを狭い画面でも操作できる */
+.sidebar-scrim { display: none; }
+
+@media (max-width: 768px) {
+  .main-layout { position: relative; }
+
+  .sidebar.open,
+  .sidebar.closed { width: 64px; }
+
+  .sidebar-content {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: 64px;
+    width: min(var(--sidebar-w), calc(100vw - 64px));
+    background: var(--bg-surface);
+    border-right: 1px solid var(--border);
+    box-shadow: 8px 0 24px rgba(15, 23, 42, 0.18);
+    overscroll-behavior: contain;
+  }
+
+  .sidebar-scrim {
+    display: block;
+    position: absolute;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    left: 64px;
+    z-index: 150;
+    padding: 0;
+    border: 0;
+    background: rgba(15, 23, 42, 0.32);
+    cursor: pointer;
+  }
+}
+
+@media (max-width: 768px) and (prefers-color-scheme: dark) {
+  .sidebar-content { box-shadow: 8px 0 24px rgba(0, 0, 0, 0.5); }
+  .sidebar-scrim { background: rgba(0, 0, 0, 0.5); }
+}
+
+@media (max-width: 768px) and (prefers-reduced-motion: no-preference) {
+  .sidebar-content { animation: drawer-in 0.18s ease-out; }
+  @keyframes drawer-in {
+    from { transform: translateX(-12px); opacity: 0; }
+    to   { transform: translateX(0); opacity: 1; }
+  }
+}

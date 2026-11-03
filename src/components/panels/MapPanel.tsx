@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useDroneStore, PLATEAU_CITIES } from '../../store/droneStore'
-import { ZONE_TYPE_LABELS } from '../../constants/labels'
+import { ZONE_TYPE_LABELS, BUTTON_LABELS } from '../../constants/labels'
+import { stepById, stepLabel } from '../../constants/steps'
 import type { ZoneType } from '../../types'
 
 const PIN_COLORS = ['#58a6ff', '#f78166', '#7ee787', '#ffa657', '#d2a8ff', '#ff7b72', '#79c0ff', '#ffffff']
@@ -41,15 +42,15 @@ export function MapPanel() {
             <path strokeLinecap="round" strokeLinejoin="round" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"/>
             <path strokeLinecap="round" strokeLinejoin="round" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
           </svg>
-          デモフライトを見る
+          {BUTTON_LABELS.demoFlight}
         </button>
       </section>
 
       {/* 都市選択 */}
       <section className="panel-section">
         <h3 className="panel-section-title">
-          <span className="section-step">STEP 1</span>
-          まちを選ぶ
+          <span className="section-step">{stepLabel('city')}</span>
+          {stepById('city').title}
         </h3>
         <p className="panel-section-hint">3D地図で表示するまちを選んでください</p>
         {prefs.map((pref) => (
@@ -72,26 +73,32 @@ export function MapPanel() {
         ))}
       </section>
 
+      {/* 飛行エリアと目印は計画・シミュレーションの必須手順ではないため、補助ツールとしてまとめる */}
+      <details className="panel-aux" open={zones.length > 0 || pins.length > 0 || mapMode === 'zone' || mapMode === 'pin'}>
+        <summary className="panel-aux-summary">
+          <span>補助ツール</span>
+          <span className="panel-aux-meta">飛行エリア {zones.length} ・ 目印 {pins.length}</span>
+        </summary>
+
       {/* 飛行エリア（ゾーン）一覧 */}
       <section className="panel-section">
         <h3 className="panel-section-title">
-          <span className="section-step">STEP 2</span>
           飛行エリア ({zones.length})
         </h3>
-        <p className="panel-section-hint">ドローンを飛ばす範囲を地図上で囲んで登録します</p>
+        <p className="panel-section-hint">飛ばす範囲や禁止区域を囲んで記録します。囲んだエリアから計画の通過ポイントを自動で作ることもできます</p>
         <div className="panel-section-header" style={{ paddingTop: 0 }}>
           <span />
           <button
             className={`panel-tool-btn ${mapMode === 'zone' ? 'active' : ''}`}
             onClick={() => setMapMode(mapMode === 'zone' ? 'select' : 'zone')}
           >
-            {mapMode === 'zone' ? '✓ 描画中...' : '+ エリアを描く'}
+            {mapMode === 'zone' ? '描画中（Esc で中止）' : `+ ${BUTTON_LABELS.drawZone}`}
           </button>
         </div>
         {zones.length === 0 ? (
           <div className="panel-empty-guided">
             <div className="guided-step-icon">🗺️</div>
-            <p>「エリアを描く」ボタンを押してから<br />地図上をクリックして囲んでください</p>
+            <p>「{BUTTON_LABELS.drawZone}」を押してから<br />地図上をクリックして囲んでください</p>
           </div>
         ) : (
           <ul className="item-list">
@@ -146,7 +153,7 @@ export function MapPanel() {
             className={`panel-tool-btn ${mapMode === 'pin' ? 'active' : ''}`}
             onClick={() => setMapMode(mapMode === 'pin' ? 'select' : 'pin')}
           >
-            {mapMode === 'pin' ? '✓ 設置中...' : '+ 目印を追加'}
+            {mapMode === 'pin' ? '設置中（Esc で中止）' : `+ ${BUTTON_LABELS.addPin}`}
           </button>
         </div>
         {pins.length === 0 ? (
@@ -214,6 +221,7 @@ export function MapPanel() {
           </ul>
         )}
       </section>
+      </details>
     </div>
   )
 }

@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useDroneStore } from '../../store/droneStore'
 import { computeFlightStats } from '../../sim/flightPath'
+import { BUTTON_LABELS } from '../../constants/labels'
 import type { MapMode } from '../../types'
 
 // 配置中のライブ統計表示用フォーマッタ
@@ -135,7 +136,7 @@ export function MapToolbar() {
             </button>
           )}
           <button className="zone-commit-btn" onClick={() => setMapMode('select')}>
-            ✓ 完了
+            {BUTTON_LABELS.finishPlacing}
           </button>
         </div>
       )}

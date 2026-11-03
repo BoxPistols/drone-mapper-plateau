@@ -1,9 +1,9 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useDroneStore } from '../../store/droneStore'
 import { PreflightChecklist } from '../PreflightChecklist'
 import { useNominatimSearch } from '../../hooks/useNominatimSearch'
 import { computeFlightStats } from '../../sim/flightPath'
-import { ACTION_LABELS, ACTION_BADGES } from '../../constants/labels'
+import { ACTION_LABELS, ACTION_BADGES, BUTTON_LABELS } from '../../constants/labels'
 import type { FlightPlan, Waypoint, WaypointAction } from '../../types'
 
 // 飛行統計は sim/flightPath.computeFlightStats に一本化（弧長ベースで実飛行と一致）
@@ -266,6 +266,11 @@ function PlanDetail({ plan, onBack }: PlanDetailProps) {
     speedMS: 5,
   })
   const isActive = activePlanId === plan.id
+
+  // 開いている計画のルートを地図に出す。以前は一覧で別の計画を開いても地図のルートが切り替わらなかった
+  useEffect(() => {
+    setActivePlanId(plan.id)
+  }, [plan.id, setActivePlanId])
   const isSimulating = simulation?.planId === plan.id
   const stats = computeFlightStats(plan.waypoints)
   const hasOverLimit = plan.waypoints.some((w) => w.altAGL > 150)
@@ -393,7 +398,7 @@ function PlanDetail({ plan, onBack }: PlanDetailProps) {
                 setMapMode(mapMode === 'waypoint' && isActive ? 'select' : 'waypoint')
               }}
             >
-              {isActive && mapMode === 'waypoint' ? '完了' : '+ 地図'}
+              {isActive && mapMode === 'waypoint' ? BUTTON_LABELS.finishPlacing : `+ ${BUTTON_LABELS.addWaypointsOnMap}`}
             </button>
           </div>
           <div className="wp-toolbar">
@@ -492,7 +497,7 @@ function PlanDetail({ plan, onBack }: PlanDetailProps) {
               {isActive && mapMode === 'waypoint' ? (
                 <p>地図上をクリックして<br />通過ポイントを追加してください</p>
               ) : (
-                <p>上の「+ 地図」ボタンを押してから<br />地図上をクリックすると<br />通過ポイントが追加されます</p>
+                <p>上の「{BUTTON_LABELS.addWaypointsOnMap}」を押してから<br />地図上をクリックすると<br />通過ポイントが追加されます</p>
               )}
             </div>
           ) : (
@@ -530,17 +535,7 @@ function PlanDetail({ plan, onBack }: PlanDetailProps) {
               <path d="M8 5v14l11-7z"/>
             </svg>
             {isSimulating ? 'シミュレーション中'
-              : plan.waypoints.length < 2 ? '2ポイント以上必要' : 'シミュレーション'}
-          </button>
-
-          <button
-            className={`action-btn primary ${isActive ? 'active' : ''}`}
-            onClick={() => {
-              setActivePlanId(isActive ? null : plan.id)
-              if (!isActive) setMapMode('waypoint')
-            }}
-          >
-            {isActive ? '編集終了' : 'ポイント編集'}
+              : plan.waypoints.length < 2 ? '2ポイント以上必要' : BUTTON_LABELS.startSimulation}
           </button>
 
           {/* エクスポートメニュー */}
@@ -594,7 +589,8 @@ function PlanDetail({ plan, onBack }: PlanDetailProps) {
 // ── 計画一覧 ──────────────────────────────────
 export function PlansPanel() {
   const { plans, addPlan, activePlanId, setActivePlanId, addToast } = useDroneStore()
-  const [editingId, setEditingId] = useState<string | null>(null)
+  // 地図に出ている計画をそのまま開く（初回の「自分でやってみる」やデモの直後に詳細から始められる）
+  const [editingId, setEditingId] = useState<string | null>(() => activePlanId)
 
   if (editingId) {
     const plan = plans.find((p) => p.id === editingId)
@@ -611,7 +607,7 @@ export function PlansPanel() {
           setActivePlanId(plan.id)
           addToast('新しい飛行計画を作成しました', 'success')
         }}>
-          + 新しく作る
+          + {BUTTON_LABELS.newPlan}
         </button>
       </div>
       {plans.length === 0 ? (
@@ -621,7 +617,7 @@ export function PlansPanel() {
           </svg>
           <p>飛行計画がまだありません</p>
           <p className="panel-empty-hint">
-            「新しく作る」ボタンを押して<br />
+            「{BUTTON_LABELS.newPlan}」を押して<br />
             ドローンの飛行ルートを設定しましょう
           </p>
         </div>
@@ -634,7 +630,7 @@ export function PlansPanel() {
               <li
                 key={plan.id}
                 className={`plan-card ${activePlanId === plan.id ? 'active-plan' : ''}`}
-                onClick={() => setEditingId(plan.id)}
+                onClick={() => { setEditingId(plan.id); setActivePlanId(plan.id) }}
               >
                 <div className="plan-card-header">
                   <span className="plan-card-name">{plan.name}</span>

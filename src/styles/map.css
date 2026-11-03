@@ -121,6 +121,11 @@
   padding: 8px 10px;
   z-index: 100;
   box-shadow: 0 4px 24px rgba(0,0,0,0.14);
+  /* 配置中は統計とボタンが加わり幅が伸びるため、地図幅を超えたら折り返す */
+  max-width: calc(100% - 16px);
+  flex-wrap: wrap;
+  justify-content: center;
+  width: max-content;
 }
 
 .toolbar-btn {
@@ -174,7 +179,10 @@
   color: var(--text-primary);
   pointer-events: none; z-index: 50;
   box-shadow: 0 4px 24px rgba(0,0,0,0.14);
-  white-space: nowrap;
+  /* 文に計画名が入り長さが変わるため、折り返して地図幅に収める */
+  width: max-content;
+  max-width: min(720px, calc(100% - 32px));
+  line-height: 1.5;
   animation: guideIn 0.35s ease forwards;
 }
 .step-guide--action {
@@ -191,6 +199,7 @@
 .step-guide-icon { font-size: 20px; flex-shrink: 0; }
 .step-guide-icon-svg { width: 20px; height: 20px; flex-shrink: 0; color: var(--accent); display: flex; align-items: center; }
 .step-guide-icon-svg svg { width: 20px; height: 20px; }
+.step-guide--ready .step-guide-icon-svg { color: inherit; }
 
 /* ── 建物情報パネル ── */
 .building-info {
@@ -529,3 +538,30 @@
 }
 .pin-color-custom::-webkit-color-swatch-wrapper { padding: 0; }
 .pin-color-custom::-webkit-color-swatch { border: none; border-radius: 50%; }
+
+/* ── 狭い画面の地図上 UI ── */
+@media (max-width: 768px) {
+  .map-toolbar { padding: 6px; }
+  .toolbar-btn { min-width: 56px; min-height: 52px; padding: 6px 8px; }
+  .toolbar-sub { display: none; }
+  .zone-drawing-guide {
+    border-left: none; margin-left: 0; padding: 6px 4px 2px;
+    flex-wrap: wrap; justify-content: center; flex-shrink: 1; min-width: 0; width: 100%;
+  }
+
+  /* 下部はツールバーとシミュレーション操作で埋まるため、ガイドは上に出す */
+  .step-guide {
+    top: 12px;
+    bottom: auto;
+    font-size: 13px;
+    padding: 10px 14px;
+    gap: 8px;
+    border-radius: 14px;
+  }
+
+  .sim-hud {
+    max-width: calc(100% - 16px);
+    flex-wrap: wrap;
+    justify-content: center;
+  }
+}
