@@ -449,7 +449,8 @@ npx tsc -b       # 型チェックのみ
 
 ## ライセンス
 
-- **アプリケーションコード**: MIT License
+- **このリポジトリのコード**: All rights reserved（© Ito Atsushi / BoxPistols）。GitHub 上での閲覧・参照は自由ですが、事前の書面による許可のない利用・複製・改変・再配布・転用・商用転載は禁止します。全文は [LICENSE](LICENSE)、問い合わせは https://asagiri-design.carrd.co/ から
+- **第三者のコード・データ**: それぞれのライセンス・利用条件に従います
 - **PLATEAU 3D都市モデル**: 各データセットのライセンスに従う（CC BY 4.0 等）
   - 公式: https://www.mlit.go.jp/plateau/
 - **CesiumJS**: Apache 2.0 License
