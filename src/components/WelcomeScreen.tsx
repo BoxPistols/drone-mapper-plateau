@@ -1,16 +1,32 @@
 import { useDroneStore } from '../store/droneStore'
 import { useModalA11y } from '../hooks/useModalA11y'
 import { markWelcomed } from '../utils/welcomeStorage'
+import { isDrawerLayout } from '../utils/viewport'
 
 interface Props {
   onClose: () => void
 }
 
 export function WelcomeScreen({ onClose }: Props) {
-  const { seedExampleData } = useDroneStore()
+  const {
+    seedExampleData, plans, addPlan, setActivePlanId,
+    setSidebarTab, setSidebarOpen, setMapMode,
+  } = useDroneStore()
 
+  const handleDismiss = () => {
+    markWelcomed()
+    onClose()
+  }
+
+  // 「自分でやってみる」は計画を1つ用意して配置モードで始め、最初のクリックでポイントが置けるようにする
   const handleStart = () => {
     markWelcomed()
+    const plan = plans[0] ?? addPlan()
+    setActivePlanId(plan.id)
+    setSidebarTab('plans')
+    // 狭い画面ではドロワーが地図を覆うので閉じておく
+    setSidebarOpen(!isDrawerLayout())
+    setMapMode('waypoint')
     onClose()
   }
 
@@ -20,10 +36,10 @@ export function WelcomeScreen({ onClose }: Props) {
     onClose()
   }
 
-  const ref = useModalA11y<HTMLDivElement>(handleStart)
+  const ref = useModalA11y<HTMLDivElement>(handleDismiss)
 
   return (
-    <div className="welcome-overlay" onClick={handleStart}>
+    <div className="welcome-overlay" onClick={handleDismiss}>
       <div
         ref={ref}
         className="welcome-panel"

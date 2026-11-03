@@ -47,3 +47,14 @@ export const WAYPOINT_ACTIONS = Object.keys(ACTION_LABELS) as readonly WaypointA
 export function coerceWaypointAction(value: unknown): WaypointAction {
   return WAYPOINT_ACTIONS.includes(value as WaypointAction) ? (value as WaypointAction) : 'none'
 }
+
+// ボタン名。ガイド文・ヘルプはこの定数を埋め込んで参照し、表記のずれを防ぐ
+export const BUTTON_LABELS = {
+  newPlan:          '新しく作る',
+  addWaypointsOnMap: '地図でポイントを追加',
+  finishPlacing:    '配置を終える',
+  startSimulation:  'シミュレーションを開始',
+  drawZone:         'エリアを描く',
+  addPin:           '目印を追加',
+  demoFlight:       'デモフライトを見る',
+} as const

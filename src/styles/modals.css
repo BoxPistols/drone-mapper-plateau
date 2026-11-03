@@ -160,3 +160,10 @@
 .lod-1 { background: #dcfce7; color: #15803d; border: 1px solid #86efac; }
 .lod-2 { background: var(--accent-dim); color: var(--accent); border: 1px solid #93c5fd; }
 .lod-3 { background: #fef3c7; color: #d97706; border: 1px solid #fcd34d; }
+
+.help-table kbd {
+  display: inline-block; min-width: 24px; padding: 1px 6px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px;
+  text-align: center; color: var(--text-primary);
+  background: var(--bg-elevated); border: 1px solid var(--border); border-radius: 4px;
+}

@@ -15,6 +15,7 @@ import { useDroneStore } from '../store/droneStore'
 import { droneSimBridge } from '../sim/droneSimBridge'
 import { cesiumViewerRef } from '../sim/cesiumViewerRef'
 import { splineSample } from '../sim/flightPath'
+import type { MapPopupState } from '../types'
 import 'cesium/Build/Cesium/Widgets/widgets.css'
 
 Ion.defaultAccessToken = import.meta.env.VITE_CESIUM_TOKEN ?? ''
@@ -138,6 +139,18 @@ function buildDroneCanvas(size = 72): HTMLCanvasElement {
   ctx.strokeStyle = 'rgba(255,255,255,0.25)'; ctx.lineWidth = 0.8; ctx.stroke()
 
   return c
+}
+
+/** 地図上のエンティティ ID（pin:/zone:/wp:）から編集ポップアップの状態を作る */
+function entityPopupAt(entity: Entity, pos: Cartesian2): MapPopupState | null {
+  const eid: string = entity.id ?? ''
+  if (eid.startsWith('pin:')) return { type: 'pin', id: eid.slice(4), x: pos.x, y: pos.y }
+  if (eid.startsWith('zone:')) return { type: 'zone', id: eid.slice(5), x: pos.x, y: pos.y }
+  if (eid.startsWith('wp:')) {
+    const [, planId, wpId] = eid.split(':')
+    return { type: 'waypoint', id: wpId, planId, x: pos.x, y: pos.y }
+  }
+  return null
 }
 
 export function CesiumMap() {
@@ -305,16 +318,16 @@ export function CesiumMap() {
       }
 
       if (mode === 'select') {
-        // 左クリックは地図操作のみ。エンティティポップアップは右クリックで開く。
-        // 3D Tile 建物のハイライトだけ維持。
         if (selectedFeatureRef.current) {
           selectedFeatureRef.current.color = Color.WHITE.withAlpha(0.95)
           selectedFeatureRef.current = null
         }
         const picked = viewer.scene.pick(pos)
-        // エンティティをクリックした場合はポップアップを閉じるだけ
+        // タッチ端末には右クリックが無いため、左クリック（タップ）でも編集ポップアップを開く。
+        // ドラッグ移動は LEFT_DOWN〜LEFT_UP で処理され、動かした場合は LEFT_CLICK にならない
         if (defined(picked) && picked.id instanceof Entity) {
-          state.setMapPopup(null)
+          const popup = entityPopupAt(picked.id, pos)
+          state.setMapPopup(popup)
           return
         }
         // 3D Tile 建物はハイライト表示
@@ -482,18 +495,9 @@ export function CesiumMap() {
       if (mapMode === 'select') {
         const picked = viewer.scene.pick(pos)
         if (defined(picked) && picked.id instanceof Entity) {
-          const eid: string = (picked.id as Entity).id ?? ''
-          if (eid.startsWith('pin:')) {
-            setMapPopup({ type: 'pin', id: eid.slice(4), x: pos.x, y: pos.y })
-            return
-          }
-          if (eid.startsWith('zone:')) {
-            setMapPopup({ type: 'zone', id: eid.slice(5), x: pos.x, y: pos.y })
-            return
-          }
-          if (eid.startsWith('wp:')) {
-            const parts = eid.split(':')
-            setMapPopup({ type: 'waypoint', id: parts[2], planId: parts[1], x: pos.x, y: pos.y })
+          const popup = entityPopupAt(picked.id, pos)
+          if (popup) {
+            setMapPopup(popup)
             return
           }
         }

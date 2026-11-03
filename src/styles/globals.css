@@ -2,6 +2,7 @@
 
 /* ── カラーシステム（ライトテーマ・WCAG AA準拠）── */
 :root {
+  color-scheme: light dark; /* 旧 index.css から移設: ダーク時にフォーム部品・スクロールバーを追従させる */
   --bg-base:      #EFF3F7;
   --bg-panel:     #FFFFFF;
   --bg-surface:   #FFFFFF;
@@ -148,4 +149,25 @@ body {
   display: flex;
   flex: 1;
   overflow: hidden;
+}
+
+/* ── 狭い画面のヘッダー ──
+   ドロワー化（sidebar.css）と同じ 768px で切り替え、右端の「使い方」「リセット」が画面外に出ないようにする */
+@media (max-width: 768px) {
+  .app-header { padding: 0 10px; gap: 8px; }
+  .header-left { gap: 8px; }
+  .header-center { min-width: 0; }
+  .header-right { gap: 6px; }
+  .header-sub { display: none; }
+}
+@media (max-width: 480px) {
+  /* 見出しとボタン名は読み上げ用に残し、見た目だけ隠す */
+  .header-title-wrap h1,
+  .header-help-btn-text {
+    position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0;
+    overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0;
+  }
+  .header-city-name { display: none; }
+  .header-help-btn { padding: 0; width: 44px; }
+  .header-return-btn, .header-help-btn, .header-reset-btn { min-width: 44px; height: 44px; }
 }

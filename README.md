@@ -53,7 +53,6 @@ npm run build    # 型チェック + 本番ビルド → dist/
 | **飛行統計** | 総距離・飛行時間・撮影ポイント数をリアルタイム計算 |
 | **KML/JSONエクスポート** | Google Earth などで読み込める KML と、計画そのままの JSON |
 | **AIアシスタント** | 自然言語で飛行計画を作成（GPT-6 Luna / Gemini 3.5 Flash-Lite、手元でキーを設定したときのみ） |
-| **飛行記録・メディア管理** | 飛行後の記録・撮影データの管理（試作段階。[仕上げ計画](docs/ux-final-plan.md)で整理予定） |
 
 ---
 
@@ -257,9 +256,8 @@ src/
 │   └── panels/
 │       ├── MapPanel.tsx   # 都市選択・ピン・ゾーン管理
 │       ├── PlansPanel.tsx # 飛行計画CRUD・統計・エクスポート
-│       ├── RecordsPanel.tsx    # 飛行記録管理
-│       ├── MediaPanel.tsx      # 撮影データ管理
-│       └── AIPanel.tsx         # AIチャット UI
+│       ├── AIPanel.tsx         # AIチャット UI（キーがあるビルド）
+│       └── AIDemoPanel.tsx     # AI のデモ表示（公開版）
 │
 ├── sim/
 │   └── droneSimBridge.ts  # React-Cesium Bridge（ミュータブル共有オブジェクト）
@@ -352,7 +350,7 @@ const overLimit = wp.altAGL > 150
 
 ### ローカル永続化（localStorage）
 
-飛行計画・ピン・ゾーン・記録は Zustand の `persist` ミドルウェアでブラウザの localStorage に自動保存されます。シミュレーション実行状態は揮発性（保存されません）。
+飛行計画・ピン・ゾーンは Zustand の `persist` ミドルウェアでブラウザの localStorage に自動保存されます。シミュレーション実行状態は揮発性（保存されません）。
 
 ### エクスポート形式
 

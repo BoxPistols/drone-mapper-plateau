@@ -124,7 +124,7 @@ export function executeTool(name: string, input: Record<string, unknown>): ToolR
       const state = {
         selectedCity: { id: store.selectedCity.id, name: store.selectedCity.name },
         plans: store.plans.map((p) => ({
-          id: p.id, name: p.name, status: p.status,
+          id: p.id, name: p.name,
           waypointCount: p.waypoints.length,
           isActive: p.id === store.activePlanId,
         })),
@@ -161,7 +161,7 @@ export function executeTool(name: string, input: Record<string, unknown>): ToolR
       if (!plan) return `エラー: 飛行計画ID "${planId}" が見つかりません`
 
       for (const wp of wps) {
-        store.addWaypoint(planId, wp.lon, wp.lat, 0)
+        store.addWaypoint(planId, wp.lon, wp.lat) // 地盤高は addWaypoint が地形から自動取得
         // 追加直後に altAGL と action を更新
         const updated = store.plans.find((p) => p.id === planId)
         const last = updated?.waypoints[updated.waypoints.length - 1]
