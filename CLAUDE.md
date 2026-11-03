@@ -9,7 +9,7 @@ Vite + React 19 + TypeScript + CesiumJS + Zustand + OpenAI SDK
 - フロントエンド: React 19, TypeScript 5.9, Vite 8
 - 3D描画: CesiumJS 1.139 (PLATEAU 3D Tiles)
 - 状態管理: Zustand (persist)
-- AI: openai (gpt-4.1-mini)
+- AI: openai SDK ^6（gpt-6-luna / Gemini 3.5 Flash-Lite を OpenAI 互換で利用）
 - スタイル: カスタムCSS（ライトテーマ、WCAG AA準拠）
 
 ## ディレクトリ構成
