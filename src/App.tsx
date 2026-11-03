@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useState } from 'react'
 import { Sidebar } from './components/Sidebar'
 import { CesiumMap } from './components/CesiumMap'
 import { BuildingInfo } from './components/BuildingInfo'
@@ -83,7 +83,8 @@ function App() {
   const [welcomeOpen, setWelcomeOpen] = useState(() => webglFailure === null && shouldShowWelcome())
 
   // 地図が無いと飛行の再生役（SimPlayer）も無く、シミュレーションが「飛行中」のまま残るので止めて、地図前提の操作も隠す
-  useEffect(() => {
+  // 描画前に反映し、地図が無い初回表示でデモフライトのボタンが一瞬出ないようにする
+  useLayoutEffect(() => {
     useDroneStore.getState().setMapAvailable(webglFailure === null)
   }, [webglFailure])
   const simulating = !!simulation

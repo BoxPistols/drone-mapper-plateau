@@ -48,8 +48,9 @@ export function diagnoseWebglFailure(apiPresent: boolean, statusMessage: string,
   if (!apiPresent) return { kind: 'api-missing', detail, embedded }
   // Chrome: "disabled by enterprise policy or commandline switch"
   if (/enterprise policy|commandline switch|webgl\.disabled/i.test(detail)) return { kind: 'disabled', detail, embedded }
-  // Chrome: "Web page caused context loss and was blocked"。Firefox の "blocklist" はドライバの対応外なので別扱い
-  if (/caused context loss|was blocked/i.test(detail)) return { kind: 'blocked', detail, embedded }
+  // Chrome: "Web page caused context loss and was blocked"。"was blocked" だけだと CSP などの文言にも当たるので前半で見る。
+  // Firefox の "blocklist" はドライバの対応外なので別扱い
+  if (/caused context loss/i.test(detail)) return { kind: 'blocked', detail, embedded }
   return { kind: 'creation-failed', detail, embedded }
 }
 
