@@ -6,3 +6,4 @@
 @import './styles/modals.css';
 @import './styles/ai-panel.css';
 @import './styles/mission-complete.css';
+@import './styles/webgl-fallback.css';

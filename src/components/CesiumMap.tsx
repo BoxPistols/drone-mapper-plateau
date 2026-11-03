@@ -10,15 +10,30 @@ import {
   PolylineGlowMaterialProperty, CallbackProperty,
   PolygonHierarchy, HeightReference, NearFarScalar,
   defined, Matrix4, SceneMode, PerspectiveFrustum,
+  ImageryLayer, UrlTemplateImageryProvider, Credit,
 } from 'cesium'
 import { useDroneStore } from '../store/droneStore'
 import { droneSimBridge } from '../sim/droneSimBridge'
 import { cesiumViewerRef } from '../sim/cesiumViewerRef'
 import { splineSample } from '../sim/flightPath'
 import type { MapPopupState } from '../types'
+import { cesiumContextOptions, diagnoseTilesError, diagnoseViewerError, isEmbedded, type WebglFailure } from '../utils/webgl'
+import { ION_TERRAIN_FAILED, ION_TOKEN_MISSING, TILES_FAILURE_TEXT } from '../constants/webglCopy'
 import 'cesium/Build/Cesium/Widgets/widgets.css'
 
-Ion.defaultAccessToken = import.meta.env.VITE_CESIUM_TOKEN ?? ''
+const ION_TOKEN: string = import.meta.env.VITE_CESIUM_TOKEN ?? ''
+Ion.defaultAccessToken = ION_TOKEN
+
+// トークンが無いと Viewer 既定の背景画像（Cesium ion の衛星写真）が読めず、地球が真っ黒になる。
+// その場合はキー不要の国土地理院「全国最新写真（シームレス）」を敷く。PLATEAU の対象は国内なので範囲も足りる
+function gsiPhotoLayer(): ImageryLayer {
+  return new ImageryLayer(new UrlTemplateImageryProvider({
+    url: 'https://cyberjapandata.gsi.go.jp/xyz/seamlessphoto/{z}/{x}/{y}.jpg',
+    minimumLevel: 2,
+    maximumLevel: 18,
+    credit: new Credit('<a href="https://maps.gsi.go.jp/development/ichiran.html" target="_blank" rel="noopener">国土地理院</a>'),
+  }))
+}
 
 const ZONE_FILL: Record<string, Color> = {
   planned:    Color.fromCssColorString('#58a6ff').withAlpha(0.2),
@@ -153,8 +168,20 @@ function entityPopupAt(entity: Entity, pos: Cartesian2): MapPopupState | null {
   return null
 }
 
-export function CesiumMap() {
+type CesiumMapProps = {
+  /** Viewer を作れなかった、または表示中に GPU を失ったときに呼ぶ。App が代替表示に切り替える */
+  onWebglFailure: (failure: WebglFailure) => void
+  /** 事前チェックで取れた WebGL の版。1 なら Cesium に webgl1 を頼む */
+  webglVersion: 1 | 2
+}
+
+export function CesiumMap({ onWebglFailure, webglVersion }: CesiumMapProps) {
   const containerRef = useRef<HTMLDivElement>(null)
+  const onWebglFailureRef = useRef(onWebglFailure)
+  onWebglFailureRef.current = onWebglFailure
+  // Viewer は 1 度だけ作る。版が変わるのは代替表示から戻って作り直すときだけなので、作成時の値を使う
+  const webglVersionRef = useRef(webglVersion)
+  const [ionNoticeOpen, setIonNoticeOpen] = useState(!ION_TOKEN)
   const viewerRef = useRef<Viewer | null>(null)
   const [sceneMode, setSceneMode] = useState<'3d' | '2d' | 'columbus'>('3d')
   const [tilesRetry, setTilesRetry] = useState(0)  // 3D Tiles 読み込み再試行トリガー
@@ -177,25 +204,47 @@ export function CesiumMap() {
   useEffect(() => {
     if (!containerRef.current || viewerRef.current) return
 
-    const viewer = new Viewer(containerRef.current, {
-      baseLayerPicker: false,
-      geocoder: false,
-      homeButton: true,
-      sceneModePicker: false,
-      navigationHelpButton: false,
-      animation: false,
-      timeline: false,
-      fullscreenButton: true,
-      infoBox: false,
-      selectionIndicator: false,
-    })
+    // 事前チェックを通っても、Cesium が要る拡張が無いなどで作成に失敗することがある。
+    // そのまま投げると画面が黒いまま止まるので、WebGL 由来の失敗だけ代替表示に回す
+    let viewer: Viewer
+    try {
+      viewer = new Viewer(containerRef.current, {
+        ...(ION_TOKEN ? {} : { baseLayer: gsiPhotoLayer() }),
+        contextOptions: cesiumContextOptions(webglVersionRef.current),
+        baseLayerPicker: false,
+        geocoder: false,
+        homeButton: true,
+        sceneModePicker: false,
+        navigationHelpButton: false,
+        animation: false,
+        timeline: false,
+        fullscreenButton: true,
+        infoBox: false,
+        selectionIndicator: false,
+      })
+    } catch (e) {
+      const failure = diagnoseViewerError(e, isEmbedded(window))
+      if (!failure) throw e
+      onWebglFailureRef.current(failure)
+      return
+    }
 
-    if (import.meta.env.VITE_CESIUM_TOKEN) {
+    const onContextLost = (e: Event) => {
+      e.preventDefault()
+      onWebglFailureRef.current({ kind: 'context-lost', detail: 'webglcontextlost', embedded: isEmbedded(window) })
+    }
+    viewer.canvas.addEventListener('webglcontextlost', onContextLost)
+
+    if (ION_TOKEN) {
       createWorldTerrainAsync().then((t) => {
+        if (viewer.isDestroyed()) return
         viewer.terrainProvider = t
         // depthTestAgainstTerrain は意図的に設定しない:
         // true にすると pickPosition() の挙動が変わりピッキング精度が下がる
-      }).catch(() => {})
+      }).catch(() => {
+        // トークンの期限切れや ion への通信遮断。平らな地表でも計画とシミュレーションは動くので知らせるだけにする
+        useDroneStore.getState().addToast(ION_TERRAIN_FAILED, 'warning')
+      })
     }
 
     // ── 立体表現チーム: シネマティック大気設定 ──
@@ -216,6 +265,7 @@ export function CesiumMap() {
     cesiumViewerRef.current = viewer
 
     return () => {
+      viewer.canvas.removeEventListener('webglcontextlost', onContextLost)
       preRenderRemoveRef.current?.()
       handlerRef.current?.destroy()
       handlerRef.current = null
@@ -280,7 +330,7 @@ export function CesiumMap() {
           p.textContent = `${city.name}の3D都市モデルを読み込めませんでした`
           const small = document.createElement('small')
           small.style.cssText = 'color:#8b949e;font-size:10px;max-width:320px;word-break:break-all'
-          small.textContent = String(e)
+          small.textContent = TILES_FAILURE_TEXT[diagnoseTilesError(e, navigator.onLine)]
           const btn = document.createElement('button')
           btn.className = 'overlay-retry-btn'
           btn.textContent = '再試行'
@@ -1073,6 +1123,16 @@ export function CesiumMap() {
         <div className="spinner" />
         <p>3D都市モデルを読み込み中...</p>
       </div>
+      {ionNoticeOpen && (
+        <div className="map-notice" role="status">
+          <p>{ION_TOKEN_MISSING}</p>
+          <button type="button" className="map-notice-close" onClick={() => setIonNoticeOpen(false)} aria-label="お知らせを閉じる">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} aria-hidden="true">
+              <path strokeLinecap="round" d="M6 18L18 6M6 6l12 12"/>
+            </svg>
+          </button>
+        </div>
+      )}
 
       {/* ── マップコントロールパネル ── */}
       <div className="map-controls">

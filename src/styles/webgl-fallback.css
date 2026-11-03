@@ -1,0 +1,226 @@
+/* ── WebGL が使えないときの代替表示（地図エリアに出す）──
+   地図エリアは普段は 3D 地図で埋まるため、ここだけ独立した配色トークンを持つ。
+   ダークは反転ではなく、地図の夜景に近い紺を基調に別途設計する。 */
+.webgl-fallback {
+  --wf-bg:        #E9EEF4;
+  --wf-card:      #FFFFFF;
+  --wf-line:      #CBD5E1;
+  --wf-text:      #0F172A;
+  --wf-muted:     #475569;   /* #FFFFFF 上で 7.6:1 */
+  --wf-accent:    #0369A1;   /* #FFFFFF 上で 5.9:1 */
+  --wf-accent-fg: #FFFFFF;
+  --wf-accent-bg: #E0F2FE;
+  --wf-code-bg:   #F1F5F9;
+  --wf-space-1: 4px;
+  --wf-space-2: 8px;
+  --wf-space-3: 12px;
+  --wf-space-4: 16px;
+  --wf-space-5: 24px;
+  --wf-radius:  12px;
+
+  position: absolute;
+  inset: 0;
+  overflow-y: auto;
+  background: var(--wf-bg);
+  color: var(--wf-text);
+  font-size: 15px;
+  line-height: 1.7;
+}
+
+@media (prefers-color-scheme: dark) {
+  .webgl-fallback {
+    --wf-bg:        #0B1220;
+    --wf-card:      #111A2C;
+    --wf-line:      #26344D;
+    --wf-text:      #E6EDF6;
+    --wf-muted:     #A3B1C6;   /* #111A2C 上で 8.1:1 */
+    --wf-accent:    #7CC4FF;   /* #111A2C 上で 9.0:1 */
+    --wf-accent-fg: #071425;
+    --wf-accent-bg: #12304D;
+    --wf-code-bg:   #0B1220;
+  }
+}
+
+.wf-inner {
+  max-width: 1120px;
+  margin: 0 auto;
+  padding: var(--wf-space-5) var(--wf-space-4) 96px;
+}
+
+.wf-head {
+  display: flex;
+  gap: var(--wf-space-3);
+  align-items: flex-start;
+  margin-bottom: var(--wf-space-5);
+}
+.wf-badge {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  border: 1px solid var(--wf-line);
+  background: var(--wf-card);
+  color: var(--wf-accent);
+}
+.wf-head h2 { font-size: 20px; line-height: 1.4; font-weight: 700; }
+.wf-lead { color: var(--wf-muted); margin-top: var(--wf-space-1); }
+
+.wf-grid {
+  display: grid;
+  gap: var(--wf-space-4);
+}
+@media (min-width: 960px) {
+  .wf-grid { grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); align-items: start; }
+}
+
+.wf-card {
+  background: var(--wf-card);
+  border: 1px solid var(--wf-line);
+  border-radius: var(--wf-radius);
+  padding: var(--wf-space-4);
+}
+@media (min-width: 600px) {
+  .wf-card { padding: var(--wf-space-5); }
+}
+
+.wf-product-name {
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: var(--wf-accent);
+}
+.wf-value { font-size: 17px; font-weight: 700; line-height: 1.6; margin-top: var(--wf-space-1); }
+
+.wf-video { margin: var(--wf-space-4) 0; }
+.wf-video video {
+  display: block;
+  width: 100%;
+  height: auto;
+  aspect-ratio: 16 / 9;
+  border-radius: 8px;
+  border: 1px solid var(--wf-line);
+  background: #000;
+}
+
+.wf-highlights { list-style: none; display: grid; gap: var(--wf-space-3); }
+.wf-highlights li {
+  display: grid;
+  gap: 2px;
+  padding: var(--wf-space-3);
+  border: 1px solid var(--wf-line);
+  border-radius: 8px;
+}
+.wf-highlights strong { font-size: 15px; }
+.wf-highlights span { font-size: 14px; color: var(--wf-muted); }
+
+.wf-links, .wf-retry {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--wf-space-2);
+  margin-top: var(--wf-space-4);
+  align-items: center;
+}
+
+.wf-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 44px;
+  padding: 0 var(--wf-space-4);
+  border-radius: 8px;
+  border: 1px solid var(--wf-line);
+  background: var(--wf-card);
+  color: var(--wf-text);
+  font: inherit;
+  font-size: 14px;
+  font-weight: 700;
+  text-decoration: none;
+  cursor: pointer;
+}
+.wf-btn:hover { border-color: var(--wf-accent); }
+.wf-btn-primary {
+  background: var(--wf-accent);
+  border-color: var(--wf-accent);
+  color: var(--wf-accent-fg);
+}
+.wf-btn-primary:hover { filter: brightness(1.08); }
+.webgl-fallback :focus-visible {
+  outline: 2px solid var(--wf-accent);
+  outline-offset: 2px;
+}
+
+.wf-diagnosis { display: grid; gap: var(--wf-space-4); }
+.wf-row { display: grid; grid-template-columns: 18px minmax(0, 1fr); gap: var(--wf-space-3); }
+.wf-row > svg { margin-top: 4px; color: var(--wf-accent); }
+.wf-row h3 { font-size: 15px; font-weight: 700; }
+.wf-row p + p { margin-top: var(--wf-space-2); }
+.wf-row a { color: var(--wf-accent); font-weight: 700; }
+.wf-steps { padding-left: 1.4em; display: grid; gap: var(--wf-space-1); }
+.wf-note { font-size: 13px; color: var(--wf-muted); margin-top: var(--wf-space-2); }
+.webgl-fallback code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.92em;
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: var(--wf-code-bg);
+  border: 1px solid var(--wf-line);
+  user-select: all;
+  overflow-wrap: anywhere;
+}
+.wf-retry { margin-top: 0; }
+.wf-retry-status { font-size: 13px; color: var(--wf-muted); }
+.wf-retry-status:empty { display: none; }
+
+.wf-tech summary {
+  cursor: pointer;
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  font-size: 13px;
+  color: var(--wf-muted);
+}
+.wf-tech code { display: block; padding: var(--wf-space-2); user-select: text; white-space: normal; }
+
+/* ion トークン未設定のお知らせ（開発ビルドで地図の上に出す） */
+.map-notice {
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  right: 72px;
+  max-width: 460px;
+  z-index: 120;
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  padding: 10px 6px 10px 14px;
+  background: var(--bg-surface);
+  color: var(--text-primary);
+  border: 1px solid var(--border-hover);
+  border-radius: 10px;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.12);
+  font-size: 13px;
+  line-height: 1.6;
+}
+.map-notice p { flex: 1; padding-top: 2px; }
+.map-notice-close {
+  flex: none;
+  width: 44px;
+  height: 44px;
+  margin: -8px 0;
+  display: grid;
+  place-items: center;
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  border-radius: 8px;
+}
+.map-notice-close svg { width: 18px; height: 18px; }
+.map-notice-close:hover { background: var(--bg-hover); }
+
+@media print {
+  .wf-video, .wf-retry, .wf-tech { display: none; }
+  .webgl-fallback { position: static; background: #fff; color: #000; }
+}

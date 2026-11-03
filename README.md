@@ -6,6 +6,7 @@
 ### [デモを開く → boxpistols.github.io/drone-mapper-plateau](https://boxpistols.github.io/drone-mapper-plateau/)
 
 [![Deploy to GitHub Pages](https://github.com/BoxPistols/drone-mapper-plateau/actions/workflows/deploy.yml/badge.svg)](https://github.com/BoxPistols/drone-mapper-plateau/actions/workflows/deploy.yml)
+[![CI](https://github.com/BoxPistols/drone-mapper-plateau/actions/workflows/ci.yml/badge.svg)](https://github.com/BoxPistols/drone-mapper-plateau/actions/workflows/ci.yml)
 
 ![台東区の3D都市モデル上で、6点の飛行計画を追跡カメラでシミュレーションしている画面](docs/images/hero-simulation.jpg)
 
@@ -27,7 +28,7 @@ npm run dev            # http://localhost:5173/drone-mapper-plateau/
 
 | 変数 | 用途 | 未設定のとき |
 |---|---|---|
-| `VITE_CESIUM_TOKEN` | Cesium ion の地形（凹凸のある地表） | 平らな地表で動作する |
+| `VITE_CESIUM_TOKEN` | Cesium ion の地形（凹凸のある地表）と衛星写真 | 平らな地表に国土地理院の航空写真を敷いて動作する（地図上にその旨を表示） |
 | `VITE_OPENAI_API_KEY` | AI アシスタント（GPT-6 Luna） | AI タブはデモ表示 |
 | `VITE_GEMINI_API_KEY` | AI アシスタント（Gemini 3.5 Flash-Lite） | 同上 |
 
@@ -37,7 +38,14 @@ npm run dev            # http://localhost:5173/drone-mapper-plateau/
 npm test         # Vitest
 npm run lint     # ESLint
 npm run build    # 型チェック + 本番ビルド → dist/
+npm run test:e2e # Playwright（先に build。初回は npx playwright install chromium）
 ```
+
+### WebGL が使えない環境
+
+ハードウェアアクセラレーションがオフ、管理ポリシーで止められている、リモートデスクトップなどで WebGL が使えないときは、Cesium を作る前に検出し、地図の代わりに製品紹介・デモ動画（[`public/demo/`](public/demo/)）・ブラウザ別の直し方を表示します。見立ては [`src/utils/webgl.ts`](src/utils/webgl.ts)、画面は [`src/components/WebglFallback.tsx`](src/components/WebglFallback.tsx)。e2e は WebGL を切った Chromium と、SwiftShader（CPU 実装の WebGL）で地図を描く Chromium の両方で確かめています（[`e2e/`](e2e/)）。
+
+![WebGL を切ったブラウザで開いたときの画面。製品紹介とデモ動画、原因と直し方が並ぶ](docs/images/webgl-fallback-desktop.png)
 
 ---
 
