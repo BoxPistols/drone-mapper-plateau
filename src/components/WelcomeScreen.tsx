@@ -1,7 +1,6 @@
 import { useDroneStore } from '../store/droneStore'
 import { useModalA11y } from '../hooks/useModalA11y'
-
-const WELCOME_KEY = 'droneMapper_welcomed'
+import { markWelcomed } from '../utils/welcomeStorage'
 
 interface Props {
   onClose: () => void
@@ -11,12 +10,12 @@ export function WelcomeScreen({ onClose }: Props) {
   const { seedExampleData } = useDroneStore()
 
   const handleStart = () => {
-    sessionStorage.setItem(WELCOME_KEY, '1')
+    markWelcomed()
     onClose()
   }
 
   const handleDemo = () => {
-    sessionStorage.setItem(WELCOME_KEY, '1')
+    markWelcomed()
     seedExampleData()
     onClose()
   }
@@ -81,9 +80,4 @@ export function WelcomeScreen({ onClose }: Props) {
       </div>
     </div>
   )
-}
-
-/** セッション内でウェルカム画面が不要かどうか判定 */
-export function shouldShowWelcome(): boolean {
-  return !sessionStorage.getItem(WELCOME_KEY)
 }

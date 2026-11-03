@@ -166,7 +166,7 @@ export function CesiumViewer({ city, onBuildingSelect }: Props) {
     }
 
     load()
-  }, [city, initialized]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [city, initialized])
 
   return (
     <div className="cesium-wrapper">

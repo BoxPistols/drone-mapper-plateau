@@ -1,13 +1,99 @@
 <!doctype html>
-<html lang="en">
+<html lang="ja">
   <head>
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>DroneMapper — ドローン飛行管理</title>
+    <title>DroneMapper — PLATEAU の3D都市モデルでドローンの飛行ルートを計画・確認</title>
+    <meta
+      name="description"
+      content="国土交通省 PLATEAU の3D都市モデル上で、建物の高さを見ながらドローンの飛行ルートを引き、地上高を保ったシミュレーションで確かめられるブラウザアプリ。KML 書き出しと AI による計画作成に対応。"
+    />
+    <link rel="canonical" href="https://boxpistols.github.io/drone-mapper-plateau/" />
+
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="DroneMapper" />
+    <meta property="og:locale" content="ja_JP" />
+    <meta property="og:title" content="DroneMapper — PLATEAU の3D都市モデルでドローンの飛行ルートを計画・確認" />
+    <meta
+      property="og:description"
+      content="建物の高さを見ながら飛行ルートを引き、地上高を保ったシミュレーションで確かめる。CesiumJS + PLATEAU 3D Tiles のブラウザアプリ。"
+    />
+    <meta property="og:url" content="https://boxpistols.github.io/drone-mapper-plateau/" />
+    <meta property="og:image" content="https://boxpistols.github.io/drone-mapper-plateau/og-image.jpg" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:image:alt" content="台東区の3D都市モデル上で飛行ルートをシミュレーションしている画面" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="DroneMapper — PLATEAU の3D都市モデルでドローンの飛行ルートを計画・確認" />
+    <meta
+      name="twitter:description"
+      content="建物の高さを見ながら飛行ルートを引き、地上高を保ったシミュレーションで確かめる。CesiumJS + PLATEAU 3D Tiles のブラウザアプリ。"
+    />
+    <meta name="twitter:image" content="https://boxpistols.github.io/drone-mapper-plateau/og-image.jpg" />
+
+    <!-- React と Cesium のバンドルが届くまで数秒白画面になるため、#root 内に置いて初回描画で置き換える -->
+    <style>
+      .boot {
+        position: fixed;
+        inset: 0;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 16px;
+        background: #eff3f7;
+        color: #475569;
+        font-family: system-ui, -apple-system, 'Hiragino Sans', 'Noto Sans JP', sans-serif;
+        font-size: 14px;
+      }
+      .boot-name {
+        font-size: 18px;
+        font-weight: 700;
+        color: #0f172a;
+      }
+      .boot-spinner {
+        width: 32px;
+        height: 32px;
+        border: 3px solid #cbd5e1;
+        border-top-color: #0369a1;
+        border-radius: 50%;
+        animation: boot-spin 0.9s linear infinite;
+      }
+      @keyframes boot-spin {
+        to {
+          transform: rotate(360deg);
+        }
+      }
+      @media (prefers-reduced-motion: reduce) {
+        .boot-spinner {
+          animation-duration: 3s;
+        }
+      }
+      @media (prefers-color-scheme: dark) {
+        .boot {
+          background: #0d1117;
+          color: #8b949e;
+        }
+        .boot-name {
+          color: #e6edf3;
+        }
+        .boot-spinner {
+          border-color: #30363d;
+          border-top-color: #58a6ff;
+        }
+      }
+    </style>
   </head>
   <body>
-    <div id="root"></div>
+    <div id="root">
+      <div class="boot" role="status" aria-live="polite">
+        <div class="boot-spinner" aria-hidden="true"></div>
+        <p class="boot-name">DroneMapper</p>
+        <p>3D地図を準備しています…</p>
+      </div>
+    </div>
+    <noscript>このアプリを使うには JavaScript を有効にしてください。</noscript>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

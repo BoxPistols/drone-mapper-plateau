@@ -4,6 +4,8 @@ import { PlansPanel } from './panels/PlansPanel'
 import { RecordsPanel } from './panels/RecordsPanel'
 import { MediaPanel } from './panels/MediaPanel'
 import { AIPanel } from './panels/AIPanel'
+import { AIDemoPanel } from './panels/AIDemoPanel'
+import { AI_APP_KEY_AVAILABLE } from '../ai/availability'
 
 const TABS = [
   {
@@ -80,7 +82,7 @@ export function Sidebar() {
           {sidebarTab === 'plans'   && <PlansPanel />}
           {sidebarTab === 'records' && <RecordsPanel />}
           {sidebarTab === 'media'   && <MediaPanel />}
-          {sidebarTab === 'ai'      && <AIPanel />}
+          {sidebarTab === 'ai'      && (AI_APP_KEY_AVAILABLE ? <AIPanel /> : <AIDemoPanel />)}
         </div>
       )}
     </aside>

@@ -1,59 +1,59 @@
 # DroneMapper
 
-**国土交通省 PLATEAU 3D都市モデルを使ったドローン飛行計画・管理Webアプリ**
+**建物の高さを見ながらドローンの飛行ルートを引き、飛ばす前にブラウザ上で確かめるためのアプリ。**
+国土交通省 PLATEAU の3D都市モデル（3D Tiles）を地図に使い、現場の下見やデモで「このルートは建物に当たらないか」「何分かかるか」を確認できます。
 
-```
-Vite 8 · React 19 · TypeScript 5 · CesiumJS 1.139 · Zustand 5 · OpenAI API
-```
+### [デモを開く → boxpistols.github.io/drone-mapper-plateau](https://boxpistols.github.io/drone-mapper-plateau/)
 
----
+[![Deploy to GitHub Pages](https://github.com/BoxPistols/drone-mapper-plateau/actions/workflows/deploy.yml/badge.svg)](https://github.com/BoxPistols/drone-mapper-plateau/actions/workflows/deploy.yml)
 
-## 概要
+![台東区の3D都市モデル上で、6点の飛行計画を追跡カメラでシミュレーションしている画面](docs/images/hero-simulation.jpg)
 
-DroneMapper は、国土交通省が無償公開する **PLATEAU 3D都市モデル（3D Tiles）** を地図基盤として使用する、ドローンオペレーター向けの総合飛行管理Webアプリです。
+## 見どころ
 
-リアルな3D建物の上を実際にドローンが飛ぶシミュレーションで、飛行計画の事前確認・法規制チェック・記録管理までを一貫して行えます。
-
-### 主な機能
-
-| 機能 | 説明 |
-|---|---|
-| **3D地図ビューアー** | PLATEAU 3D Tilesをリアルタイム表示。2D/2.5D/3D切り替え対応 |
-| **飛行ゾーン描画** | ポリゴンで飛行エリア・禁止区域・注意区域を地図上に登録 |
-| **飛行計画作成** | ウェイポイントの配置・高度・速度・アクション設定 |
-| **フライトシミュレーション** | 60fps・地形追従・POV/追従/自由カメラ |
-| **飛行前チェックリスト** | 航空法150m制限警告を含む安全確認6項目 |
-| **飛行統計** | 総距離・飛行時間・撮影ポイント数をリアルタイム計算 |
-| **KML/JSONエクスポート** | Google Earth・DJI Pilot 2で使える形式で書き出し |
-| **AIアシスタント** | 自然言語で飛行計画を生成（GPT-4.1 mini） |
-| **飛行記録・メディア管理** | 飛行後の記録・撮影データを一元管理 |
-
----
+- **地上高を保つ飛行シミュレーション** — 区間ごとに「距離 ÷ 速度」で実時間を出し、スプライン上を弧長に沿って等速で進む。高さは毎フレーム `globe.getHeight()` の地盤高に地上高を足して求める。→ [`src/sim/flightPath.ts`](src/sim/flightPath.ts)（テスト: [`flightPath.test.ts`](src/sim/flightPath.test.ts)）、[`src/components/CesiumMap.tsx`](src/components/CesiumMap.tsx)
+- **AI がアプリを操作して計画を作る（Function Calling）** — 「浅草寺の周りを一周」のような指示から、モデルが `create_flight_plan` や `add_waypoints` などのツールを呼び、ストアを直接更新する。→ [`src/ai/tools.ts`](src/ai/tools.ts)、[`src/ai/useAIChat.ts`](src/ai/useAIChat.ts)。公開版は API キーを含めないため、AI タブはツール一覧と会話例を見せるデモ表示になる
+- **実機アプリへ持ち出せる KML 書き出し** — 地盤高 + 地上高を海抜（`altitudeMode=absolute`）で出力し、Google Earth などで同じ高さに再現できる。→ [`src/components/panels/PlansPanel.tsx`](src/components/panels/PlansPanel.tsx)
 
 ## クイックスタート
 
 ```bash
-git clone <repository-url>
-cd plateau-viewer
+git clone https://github.com/BoxPistols/drone-mapper-plateau.git
+cd drone-mapper-plateau
 npm install
-cp .env.example .env   # 環境変数を設定
-npm run dev            # http://localhost:5173
+cp .env.example .env   # 必要なキーだけ設定（すべて任意）
+npm run dev            # http://localhost:5173/drone-mapper-plateau/
 ```
 
-### 環境変数
+| 変数 | 用途 | 未設定のとき |
+|---|---|---|
+| `VITE_CESIUM_TOKEN` | Cesium ion の地形（凹凸のある地表） | 平らな地表で動作する |
+| `VITE_OPENAI_API_KEY` | AI アシスタント（GPT-6 Luna） | AI タブはデモ表示 |
+| `VITE_GEMINI_API_KEY` | AI アシスタント（Gemini 3.5 Flash-Lite） | 同上 |
 
-```env
-# Cesium ion トークン（地形データの高精度化に必要。なくても動作する）
-VITE_CESIUM_TOKEN=your_cesium_ion_token_here
+`VITE_*` の値はビルド時にクライアントの JS に埋め込まれます。AI のキーは手元の開発用にだけ使い、公開ビルド（`.github/workflows/deploy.yml`）には渡していません。公開版で AI を動かすにはサーバー側のプロキシが必要です。
 
-# OpenAI API キー（AIアシスタント機能に必要）
-# 警告: デモ目的のみ。本番環境ではサーバーサイドプロキシ経由にすること
-VITE_OPENAI_API_KEY=your_openai_api_key_here
+```bash
+npm test         # Vitest
+npm run lint     # ESLint
+npm run build    # 型チェック + 本番ビルド → dist/
 ```
 
-トークン・キーの取得先:
-- Cesium ion: https://cesium.com/ion/（無料プラン対応）
-- OpenAI: https://platform.openai.com/
+---
+
+## 主な機能
+
+| 機能 | 説明 |
+|---|---|
+| **3D地図ビューアー** | PLATEAU 3D Tiles を表示。平面 / 立体の切り替え |
+| **飛行ゾーン描画** | ポリゴンで飛行エリア・禁止区域・注意区域を地図上に登録 |
+| **飛行計画作成** | 通過ポイントの配置・高度・速度・アクション設定 |
+| **フライトシミュレーション** | 地形追従・俯瞰 / 追跡 / 機体視点の3カメラ・1〜10倍速 |
+| **飛行前チェックリスト** | 航空法150m制限警告を含む安全確認6項目 |
+| **飛行統計** | 総距離・飛行時間・撮影ポイント数をリアルタイム計算 |
+| **KML/JSONエクスポート** | Google Earth などで読み込める KML と、計画そのままの JSON |
+| **AIアシスタント** | 自然言語で飛行計画を作成（GPT-6 Luna / Gemini 3.5 Flash-Lite、手元でキーを設定したときのみ） |
+| **飛行記録・メディア管理** | 飛行後の記録・撮影データの管理（試作段階。[仕上げ計画](docs/ux-final-plan.md)で整理予定） |
 
 ---
 
@@ -210,7 +210,7 @@ const tools = [
 ]
 ```
 
-会話フローはストリーミング対応で、AIの思考過程をリアルタイム表示します：
+会話はストリーミングで受け取り、応答を届いた分から表示します：
 
 ```typescript
 // src/ai/useAIChat.ts
@@ -220,11 +220,11 @@ const tools = [
 // 4. ツール結果をAPIに返送 → AIが最終回答を生成
 ```
 
-使用モデル: **GPT-4.1 mini**（`gpt-4.1-mini`）
+使用モデル: **GPT-6 Luna**（`gpt-6-luna`、既定）／ **Gemini 3.5 Flash-Lite**（`gemini-3.5-flash-lite`、Gemini の OpenAI 互換エンドポイント経由）。定義は `src/ai/useAIChat.ts` の `AI_MODELS`。
 
 **セキュリティ上の注意**
 
-現在の実装はデモ目的でブラウザから直接 OpenAI API を呼び出しています（`dangerouslyAllowBrowser: true`）。本番環境では、APIキーをサーバーサイドに移動し、プロキシ経由でリクエストする必要があります。
+現在の実装は手元の開発用にブラウザから直接 API を呼び出しています（`dangerouslyAllowBrowser: true`）。キーがクライアントに埋め込まれるため、公開ビルドにはキーを渡していません（AI タブはデモ表示）。公開版で動かすには、キーをサーバー側に置いてプロキシ経由で呼ぶ必要があります。
 
 ---
 
@@ -248,7 +248,7 @@ src/
 │   │                     #   - エンティティ（ピン/ゾーン/WP/ドローン）管理
 │   │                     #   - クリック・右クリックイベント処理
 │   │                     #   - preRender ループ（カメラ追従・地盤高更新）
-│   │                     #   - 2D/2.5D/3D モード切り替え
+│   │                     #   - 平面 / 立体 モード切り替え
 │   ├── PreflightChecklist.tsx  # 飛行前安全確認モーダル
 │   ├── map/
 │   │   ├── SimPlayer.tsx  # シミュレーションHUD・RAFループ
@@ -400,9 +400,8 @@ Google Earth / DJI Pilot 2 / QGroundControl などのドローン運航管理ソ
 
 | ボタン | 動作 |
 |---|---|
-| 2D | 平面地図に切り替え（現在地保持） |
-| 2.5D | コロンバスビュー（斜め俯瞰）に切り替え |
-| 3D | 3Dグローブに切り替え（デフォルト） |
+| 平面 | 真上から見る平面地図に切り替え（現在地保持） |
+| 立体 | 3D 表示に切り替え（デフォルト） |
 | ＋ / − | ズームイン / アウト |
 | ⊕ | カメラの傾き（roll）をリセット |
 
@@ -417,7 +416,7 @@ Google Earth / DJI Pilot 2 / QGroundControl などのドローン運航管理ソ
 | Vite | 8 | ビルドツール |
 | CesiumJS | 1.139 | 3D地球儀・3D Tiles表示 |
 | Zustand | 5 | グローバル状態管理 |
-| `openai` | ^4 | OpenAI API クライアント |
+| `openai` | ^6 | OpenAI / Gemini（OpenAI 互換）API クライアント |
 | `vite-plugin-cesium` | 1.2 | CesiumJSのVite統合 |
 
 ---
@@ -427,10 +426,11 @@ Google Earth / DJI Pilot 2 / QGroundControl などのドローン運航管理ソ
 ### ビルドコマンド
 
 ```bash
-npm run dev      # 開発サーバー起動 (http://localhost:5173)
-npm run build    # 本番ビルド → dist/
+npm run dev      # 開発サーバー起動 (http://localhost:5173/drone-mapper-plateau/)
+npm test         # Vitest
+npm run build    # 型チェック + 本番ビルド → dist/
 npm run lint     # ESLint 実行
-npx tsc --noEmit # 型チェックのみ
+npx tsc -b       # 型チェックのみ
 ```
 
 ### コーディング規約
@@ -449,7 +449,8 @@ npx tsc --noEmit # 型チェックのみ
 
 ## ライセンス
 
-- **アプリケーションコード**: MIT License
+- **このリポジトリのコード**: All rights reserved（© Ito Atsushi / BoxPistols）。GitHub 上での閲覧・参照は自由ですが、事前の書面による許可のない利用・複製・改変・再配布・転用・商用転載は禁止します。全文は [LICENSE](LICENSE)、問い合わせは https://asagiri-design.carrd.co/ から
+- **第三者のコード・データ**: それぞれのライセンス・利用条件に従います
 - **PLATEAU 3D都市モデル**: 各データセットのライセンスに従う（CC BY 4.0 等）
   - 公式: https://www.mlit.go.jp/plateau/
 - **CesiumJS**: Apache 2.0 License
