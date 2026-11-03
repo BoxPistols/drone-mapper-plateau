@@ -13,6 +13,7 @@ export function MapPanel() {
     zones, updateZone, deleteZone,
     mapMode, setMapMode,
     seedExampleData,
+    mapAvailable,
   } = useDroneStore()
 
   const [expandedPin, setExpandedPin] = useState<string | null>(null)
@@ -23,28 +24,30 @@ export function MapPanel() {
   return (
     <div className="panel">
 
-      {/* はじめてガイド */}
-      <section className="panel-section seed-section">
-        <p className="seed-desc">
-          まずは体験してみましょう！<br />
-          <small>サンプルのルートを読み込んで、ドローンが飛ぶ様子を確認できます</small>
-        </p>
-        <button
-          className="seed-btn"
-          onClick={() => {
-            const hasData = pins.length > 0 || zones.length > 0
-            if (!hasData || confirm('現在のデータは消えます。デモを開始しますか？')) {
-              seedExampleData()
-            }
-          }}
-        >
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
-            <path strokeLinecap="round" strokeLinejoin="round" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"/>
-            <path strokeLinecap="round" strokeLinejoin="round" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
-          </svg>
-          {BUTTON_LABELS.demoFlight}
-        </button>
-      </section>
+      {/* はじめてガイド。デモフライトは 3D 地図の上で飛ぶので、地図を出せない環境では出さない */}
+      {mapAvailable && (
+        <section className="panel-section seed-section">
+          <p className="seed-desc">
+            まずは体験してみましょう！<br />
+            <small>サンプルのルートを読み込んで、ドローンが飛ぶ様子を確認できます</small>
+          </p>
+          <button
+            className="seed-btn"
+            onClick={() => {
+              const hasData = pins.length > 0 || zones.length > 0
+              if (!hasData || confirm('現在のデータは消えます。デモを開始しますか？')) {
+                seedExampleData()
+              }
+            }}
+          >
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"/>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+            </svg>
+            {BUTTON_LABELS.demoFlight}
+          </button>
+        </section>
+      )}
 
       {/* 都市選択 */}
       <section className="panel-section">

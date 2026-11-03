@@ -114,6 +114,9 @@ interface DroneStore {
 
   // トースト通知
   toasts: Toast[]
+  // 3D 地図（WebGL）を使えるか。端末ごとに変わるので保存しない
+  mapAvailable: boolean
+  setMapAvailable: (available: boolean) => void
   addToast: (message: string, type?: Toast['type']) => void
   removeToast: (id: string) => void
 
@@ -338,6 +341,8 @@ export const useDroneStore = create<DroneStore>()(
 
       // トースト通知
       toasts: [],
+      mapAvailable: true,
+      setMapAvailable: (available) => set({ mapAvailable: available }),
       addToast: (message, type = 'info') => {
         const id = uid()
         set((s) => ({ toasts: [...s.toasts.slice(-2), { id, message, type }] }))

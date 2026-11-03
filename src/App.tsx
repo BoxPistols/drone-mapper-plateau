@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { Sidebar } from './components/Sidebar'
 import { CesiumMap } from './components/CesiumMap'
 import { BuildingInfo } from './components/BuildingInfo'
@@ -12,6 +12,9 @@ import { shouldShowWelcome } from './utils/welcomeStorage'
 import { useDroneStore } from './store/droneStore'
 import { resolveGuideState } from './utils/stepGuide'
 import { guideCopy } from './constants/guideCopy'
+import { WebglFallback } from './components/WebglFallback'
+import { SIM_NEEDS_MAP } from './constants/webglCopy'
+import { browserProbeEnv, probeWebgl, type WebglFailure } from './utils/webgl'
 import './App.css'
 
 // 現在の状態に合わせた「次のステップ」ガイドを表示
@@ -66,10 +69,36 @@ function ToastContainer() {
   )
 }
 
+// Viewer を作る前に確かめる。作ってから失敗すると Cesium の中で例外になり、地図エリアが黒いまま残る
+function initialWebglFailure(): WebglFailure | null {
+  const probe = probeWebgl(browserProbeEnv())
+  return probe.ok ? null : probe.failure
+}
+
 function App() {
   const { selectedCity, buildingProps, setBuildingProps, simulation } = useDroneStore()
   const [helpOpen, setHelpOpen] = useState(false)
-  const [welcomeOpen, setWelcomeOpen] = useState(() => shouldShowWelcome())
+  const [webglFailure, setWebglFailure] = useState<WebglFailure | null>(initialWebglFailure)
+  // 地図を使えないときは代替表示そのものが紹介になるので、地図操作の手順を説く初回案内は出さない（既読にもしない）
+  const [welcomeOpen, setWelcomeOpen] = useState(() => webglFailure === null && shouldShowWelcome())
+
+  // 地図が無いと飛行の再生役（SimPlayer）も無く、シミュレーションが「飛行中」のまま残るので止めて、地図前提の操作も隠す
+  useEffect(() => {
+    useDroneStore.getState().setMapAvailable(webglFailure === null)
+  }, [webglFailure])
+  const simulating = !!simulation
+  useEffect(() => {
+    if (!webglFailure || !simulating) return
+    const { stopSimulation, addToast } = useDroneStore.getState()
+    stopSimulation()
+    addToast(SIM_NEEDS_MAP, 'warning')
+  }, [webglFailure, simulating])
+
+  const retryWebgl = useCallback(() => {
+    const probe = probeWebgl(browserProbeEnv())
+    if (probe.ok) setWebglFailure(null)
+    return probe.ok
+  }, [])
 
   const handleLocationSelect = (lat: number, lon: number) => {
     window.dispatchEvent(new CustomEvent('cesium:flyTo', { detail: { lat, lon } }))
@@ -153,17 +182,23 @@ function App() {
         <Sidebar />
 
         <div className="map-area">
-          <CesiumMap />
-          <MapToolbar />
-          {buildingProps && (
-            <BuildingInfo
-              properties={buildingProps}
-              onClose={() => setBuildingProps(null)}
-            />
+          {webglFailure ? (
+            <WebglFallback failure={webglFailure} onRetry={retryWebgl} />
+          ) : (
+            <>
+              <CesiumMap onWebglFailure={setWebglFailure} />
+              <MapToolbar />
+              {buildingProps && (
+                <BuildingInfo
+                  properties={buildingProps}
+                  onClose={() => setBuildingProps(null)}
+                />
+              )}
+              {simulation && <SimPlayer />}
+              <MapEntityPopup />
+              <StepGuide />
+            </>
           )}
-          {simulation && <SimPlayer />}
-          <MapEntityPopup />
-          <StepGuide />
         </div>
       </div>
 

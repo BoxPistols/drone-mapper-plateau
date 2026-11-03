@@ -6,3 +6,7 @@ dist/
 .DS_Store
 .vscode/
 *.log
+
+# Playwright
+/test-results/
+/playwright-report/
