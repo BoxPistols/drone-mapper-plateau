@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { detectBrowser, detectPlatform, type WebglFailure } from '../utils/webgl'
-import { causeText, fixGuide, PRODUCT_COPY, WEBGL_COPY, type CopyLine } from '../constants/webglCopy'
+import { causeText, isSettingsCause, leadText, PRODUCT_COPY, recoveryGuide, safetyCopy, WEBGL_COPY, type CopyLine } from '../constants/webglCopy'
 
 const BASE = import.meta.env.BASE_URL
 const VIDEO_SRC = `${BASE}demo/drone-mapper-plateau.mp4`
@@ -38,7 +38,8 @@ export function WebglFallback({ failure, onRetry }: Props) {
   const ua = navigator.userAgent
   const browser = detectBrowser(ua)
   const platform = detectPlatform(ua, navigator.maxTouchPoints ?? 0)
-  const guide = fixGuide(browser, platform)
+  const guide = recoveryGuide(failure.kind, browser, platform)
+  const safety = isSettingsCause(failure.kind) ? safetyCopy(platform, browser) : null
 
   // React は muted を属性に反映しないため、自動再生がブロックされないよう DOM のプロパティで立てる
   useEffect(() => {
@@ -58,7 +59,7 @@ export function WebglFallback({ failure, onRetry }: Props) {
           </span>
           <div>
             <h2 id="webgl-fallback-title">{WEBGL_COPY.title}</h2>
-            <p className="wf-lead">{WEBGL_COPY.lead}</p>
+            <p className="wf-lead">{leadText(failure.kind)}</p>
           </div>
         </header>
 
@@ -129,13 +130,15 @@ export function WebglFallback({ failure, onRetry }: Props) {
               </div>
             </section>
 
-            <section className="wf-row">
-              <svg {...ICON}><path d="M8 1.6 13 3.5v4c0 3.2-2.1 5.6-5 6.9-2.9-1.3-5-3.7-5-6.9v-4Z" /><path d="m5.6 8 1.7 1.7 3.1-3.3" /></svg>
-              <div>
-                <h3>有効にしても安全です</h3>
-                <p>{WEBGL_COPY.safety}</p>
-              </div>
-            </section>
+            {safety && (
+              <section className="wf-row">
+                <svg {...ICON}><path d="M8 1.6 13 3.5v4c0 3.2-2.1 5.6-5 6.9-2.9-1.3-5-3.7-5-6.9v-4Z" /><path d="m5.6 8 1.7 1.7 3.1-3.3" /></svg>
+                <div>
+                  <h3>{safety.title}</h3>
+                  <p>{safety.body}</p>
+                </div>
+              </section>
+            )}
 
             <div className="wf-retry">
               <button type="button" className="wf-btn wf-btn-primary" onClick={() => setRetryFailed(!onRetry())}>

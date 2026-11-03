@@ -14,7 +14,7 @@ import { resolveGuideState } from './utils/stepGuide'
 import { guideCopy } from './constants/guideCopy'
 import { WebglFallback } from './components/WebglFallback'
 import { SIM_NEEDS_MAP } from './constants/webglCopy'
-import { browserProbeEnv, probeWebgl, type WebglFailure } from './utils/webgl'
+import { browserProbeEnv, probeWebgl, type WebglFailure, type WebglProbe } from './utils/webgl'
 import './App.css'
 
 // 現在の状態に合わせた「次のステップ」ガイドを表示
@@ -70,15 +70,16 @@ function ToastContainer() {
 }
 
 // Viewer を作る前に確かめる。作ってから失敗すると Cesium の中で例外になり、地図エリアが黒いまま残る
-function initialWebglFailure(): WebglFailure | null {
-  const probe = probeWebgl(browserProbeEnv())
-  return probe.ok ? null : probe.failure
+function initialWebglProbe(): WebglProbe {
+  return probeWebgl(browserProbeEnv())
 }
 
 function App() {
   const { selectedCity, buildingProps, setBuildingProps, simulation } = useDroneStore()
   const [helpOpen, setHelpOpen] = useState(false)
-  const [webglFailure, setWebglFailure] = useState<WebglFailure | null>(initialWebglFailure)
+  const [initialProbe] = useState(initialWebglProbe)
+  const [webglFailure, setWebglFailure] = useState<WebglFailure | null>(initialProbe.ok ? null : initialProbe.failure)
+  const [webglVersion, setWebglVersion] = useState<1 | 2>(initialProbe.ok ? initialProbe.version : 2)
   // 地図を使えないときは代替表示そのものが紹介になるので、地図操作の手順を説く初回案内は出さない（既読にもしない）
   const [welcomeOpen, setWelcomeOpen] = useState(() => webglFailure === null && shouldShowWelcome())
 
@@ -97,7 +98,10 @@ function App() {
 
   const retryWebgl = useCallback(() => {
     const probe = probeWebgl(browserProbeEnv())
-    if (probe.ok) setWebglFailure(null)
+    if (probe.ok) {
+      setWebglVersion(probe.version)
+      setWebglFailure(null)
+    }
     return probe.ok
   }, [])
 
@@ -187,7 +191,7 @@ function App() {
             <WebglFallback failure={webglFailure} onRetry={retryWebgl} />
           ) : (
             <>
-              <CesiumMap onWebglFailure={setWebglFailure} />
+              <CesiumMap onWebglFailure={setWebglFailure} webglVersion={webglVersion} />
               <MapToolbar />
               {buildingProps && (
                 <BuildingInfo

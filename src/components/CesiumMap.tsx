@@ -17,7 +17,7 @@ import { droneSimBridge } from '../sim/droneSimBridge'
 import { cesiumViewerRef } from '../sim/cesiumViewerRef'
 import { splineSample } from '../sim/flightPath'
 import type { MapPopupState } from '../types'
-import { diagnoseTilesError, diagnoseViewerError, isEmbedded, type WebglFailure } from '../utils/webgl'
+import { cesiumContextOptions, diagnoseTilesError, diagnoseViewerError, isEmbedded, type WebglFailure } from '../utils/webgl'
 import { ION_TERRAIN_FAILED, ION_TOKEN_MISSING, TILES_FAILURE_TEXT } from '../constants/webglCopy'
 import 'cesium/Build/Cesium/Widgets/widgets.css'
 
@@ -171,12 +171,16 @@ function entityPopupAt(entity: Entity, pos: Cartesian2): MapPopupState | null {
 type CesiumMapProps = {
   /** Viewer を作れなかった、または表示中に GPU を失ったときに呼ぶ。App が代替表示に切り替える */
   onWebglFailure: (failure: WebglFailure) => void
+  /** 事前チェックで取れた WebGL の版。1 なら Cesium に webgl1 を頼む */
+  webglVersion: 1 | 2
 }
 
-export function CesiumMap({ onWebglFailure }: CesiumMapProps) {
+export function CesiumMap({ onWebglFailure, webglVersion }: CesiumMapProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const onWebglFailureRef = useRef(onWebglFailure)
   onWebglFailureRef.current = onWebglFailure
+  // Viewer は 1 度だけ作る。版が変わるのは代替表示から戻って作り直すときだけなので、作成時の値を使う
+  const webglVersionRef = useRef(webglVersion)
   const [ionNoticeOpen, setIonNoticeOpen] = useState(!ION_TOKEN)
   const viewerRef = useRef<Viewer | null>(null)
   const [sceneMode, setSceneMode] = useState<'3d' | '2d' | 'columbus'>('3d')
@@ -206,6 +210,7 @@ export function CesiumMap({ onWebglFailure }: CesiumMapProps) {
     try {
       viewer = new Viewer(containerRef.current, {
         ...(ION_TOKEN ? {} : { baseLayer: gsiPhotoLayer() }),
+        contextOptions: cesiumContextOptions(webglVersionRef.current),
         baseLayerPicker: false,
         geocoder: false,
         homeButton: true,

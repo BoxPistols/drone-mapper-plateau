@@ -108,6 +108,14 @@ export function probeWebgl(env: ProbeEnv): WebglProbe {
   return { ok: false, failure: diagnoseWebglFailure(true, status, env.embedded) }
 }
 
+/**
+ * Viewer に渡す contextOptions。Cesium 1.139 は WebGL2RenderingContext があると webgl2 だけを要求し、
+ * 取れなくても webgl1 を試さずに例外にする。事前チェックで WebGL1 しか取れなかった環境では最初から webgl1 を頼む。
+ */
+export function cesiumContextOptions(version: 1 | 2): { requestWebgl1: true } | undefined {
+  return version === 1 ? { requestWebgl1: true } : undefined
+}
+
 /** ブラウザ上での既定の環境。テストでは ProbeEnv を直接渡す */
 export function browserProbeEnv(): ProbeEnv {
   return {

@@ -100,6 +100,67 @@ export function fixGuide(browser: BrowserKind, platform: PlatformKind): FixGuide
   }
 }
 
+/**
+ * 設定を変えれば直る見立てか。ハードウェアアクセラレーションやロックダウンモードの手順はこのときだけ出す。
+ * blocked と context-lost は設定が正しくても起きるので、設定を疑わせる手順は出さない
+ */
+export function isSettingsCause(kind: WebglFailureKind): boolean {
+  return kind === 'api-missing' || kind === 'disabled' || kind === 'creation-failed'
+}
+
+/** 見立てごとの直し方。設定由来でないものは、開き直しと再試行を案内する */
+export function recoveryGuide(kind: WebglFailureKind, browser: BrowserKind, platform: PlatformKind): FixGuide {
+  if (kind === 'blocked') {
+    return {
+      steps: [
+        ['ブラウザを完全に終了して、開き直す'],
+        ['このページをもう一度開く'],
+      ],
+      note: ['何度も止まるときは、ブラウザと OS（グラフィックドライバ）を最新にしてください。'],
+    }
+  }
+  if (kind === 'context-lost') {
+    return {
+      steps: [
+        ['3D を使うほかのタブやアプリを閉じる'],
+        ['下の「もう一度試す」を押す'],
+        ['戻らなければ、ページを再読み込みする'],
+      ],
+      note: ['何度も起きるときは、ブラウザを完全に終了して開き直してください。'],
+    }
+  }
+  return fixGuide(browser, platform)
+}
+
+/** 見出し下の説明。表示中に止まった場合は「この環境では使えない」と言わない */
+export function leadText(kind: WebglFailureKind): string {
+  switch (kind) {
+    case 'context-lost':
+      return '表示中に 3D 描画（WebGL）が止まったため、地図を出せなくなりました。アプリの動きは下の動画でご覧いただけます。'
+    case 'blocked':
+      return 'ブラウザがこのページの 3D 描画（WebGL）を一時的に止めているため、地図を出せません。アプリの動きは下の動画でご覧いただけます。'
+    default:
+      return 'この環境では WebGL（ブラウザの 3D 描画機能）が使えないため、地図を出せません。アプリの動きは下の動画でご覧いただけます。'
+  }
+}
+
+/**
+ * 設定を変える前に読んでほしいこと。Apple 端末の手順はロックダウンモードの解除なので、
+ * 守りの機能を弱めることを「安全」とは言わず、解除してよい場面を限る
+ */
+export function safetyCopy(platform: PlatformKind, browser: BrowserKind): { title: string; body: string } {
+  if (platform === 'ios' || browser === 'safari') {
+    return {
+      title: 'ロックダウンモードを解除する前に',
+      body: 'ロックダウンモードは、標的型の攻撃に備えてブラウザの機能を絞る仕組みです。解除するのは信頼できるサイトだけにしてください。解除しなくても、動画でアプリの動きを確認できます。',
+    }
+  }
+  return {
+    title: '有効にしても安全です',
+    body: 'WebGL は主要なブラウザに標準で入っている機能です。有効にしても、サイトが端末のファイルやほかのタブに触れることはありません。',
+  }
+}
+
 /** 「なぜ使えないのか」を 1 文で。ブラウザが返した状態から分ける */
 export function causeText(kind: WebglFailureKind, platform: PlatformKind, browser: BrowserKind): string {
   const apple = platform === 'ios' || browser === 'safari'
@@ -123,11 +184,9 @@ export function causeText(kind: WebglFailureKind, platform: PlatformKind, browse
 
 export const WEBGL_COPY = {
   title: '3D 地図を表示できません',
-  lead: 'この環境では WebGL（ブラウザの 3D 描画機能）が使えないため、地図を出せません。アプリの動きは下の動画でご覧いただけます。',
   embedded:
     'このページは別のページの中に埋め込まれて表示されています。埋め込み先が 3D 描画を許可していない場合は、新しいタブで開くと表示できることがあります。',
   openInNewTab: '新しいタブで開く',
-  safety: 'WebGL は主要なブラウザに標準で入っている機能です。有効にしても、サイトが端末のファイルやほかのタブに触れることはありません。',
   retry: 'もう一度試す',
   retryFailed: 'まだ WebGL を使えません。設定を変えたあとは、ブラウザの再起動が必要です。',
   sidebarNote: '左のメニューから、飛行計画の一覧や AI アシスタントの説明はこのまま開けます。',

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
+  cesiumContextOptions,
   detectBrowser,
   detectPlatform,
   diagnoseTilesError,
@@ -9,7 +10,7 @@ import {
   probeWebgl,
   type ProbeEnv,
 } from './webgl'
-import { causeText, fixGuide } from '../constants/webglCopy'
+import { causeText, fixGuide, isSettingsCause, leadText, recoveryGuide, safetyCopy } from '../constants/webglCopy'
 
 const UA = {
   chromeMac: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/156.0.0.0 Safari/537.36',
@@ -65,6 +66,16 @@ describe('probeWebgl', () => {
 
   it('WebGL2 が無くても WebGL1 が取れれば使える（Cesium は WebGL1 で動く）', () => {
     expect(probeWebgl(fakeEnv({ contexts: { webgl: true } }))).toEqual({ ok: true, version: 1 })
+  })
+
+  it('webgl2 が null なら、Cesium には webgl1 を頼む（Cesium 1.139 は自分では webgl1 に落ちない）', () => {
+    const probe = probeWebgl(fakeEnv({ contexts: { webgl: true } }))
+    expect(probe.ok && cesiumContextOptions(probe.version)).toEqual({ requestWebgl1: true })
+  })
+
+  it('webgl2 が取れれば contextOptions は既定のまま', () => {
+    const probe = probeWebgl(fakeEnv({ contexts: { webgl2: true, webgl: true } }))
+    expect(probe.ok && cesiumContextOptions(probe.version)).toBeUndefined()
   })
 
   it('WebGLRenderingContext 自体が無ければ api-missing', () => {
@@ -177,6 +188,21 @@ describe('案内文', () => {
   it('どの見立てでも「公開URLで開く」とは言わない', () => {
     for (const kind of ['api-missing', 'disabled', 'blocked', 'creation-failed', 'context-lost'] as const) {
       expect(causeText(kind, 'desktop', 'chrome')).not.toMatch(/公開/)
+    }
+  })
+  it('blocked と context-lost では設定（ハードウェアアクセラレーション）を疑わせない', () => {
+    for (const kind of ['blocked', 'context-lost'] as const) {
+      expect(isSettingsCause(kind)).toBe(false)
+      expect(JSON.stringify(recoveryGuide(kind, 'chrome', 'desktop'))).not.toMatch(/アクセラレ|chrome:\/\/settings/)
+      expect(leadText(kind)).not.toContain('この環境では')
+    }
+    expect(JSON.stringify(recoveryGuide('creation-failed', 'chrome', 'desktop'))).toContain('chrome://settings/system')
+  })
+  it('Apple 端末ではロックダウンモードの解除を「安全」と言わず、信頼できるサイトに限る', () => {
+    for (const [platform, browser] of [['ios', 'safari'], ['ios', 'chrome'], ['desktop', 'safari']] as const) {
+      const c = safetyCopy(platform, browser)
+      expect(c.title + c.body).not.toContain('安全')
+      expect(c.body).toContain('信頼できるサイト')
     }
   })
 })
