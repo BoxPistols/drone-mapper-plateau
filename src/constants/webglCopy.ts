@@ -196,7 +196,7 @@ export const WEBGL_COPY = {
 export const PRODUCT_COPY = {
   name: 'DroneMapper',
   value: '建物の高さを見ながらドローンの飛行ルートを引き、飛ばす前にブラウザ上で確かめるアプリです。',
-  videoLabel: 'DroneMapper のデモ動画（25 秒、音声なし）',
+  videoLabel: 'DroneMapper のデモ動画（25 秒、BGM あり・消音で再生）',
   highlights: [
     {
       title: 'PLATEAU の 3D 都市モデルで下見',
